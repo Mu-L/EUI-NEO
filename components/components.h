@@ -13,6 +13,7 @@
 #include "components/image.h"
 #include "components/input.h"
 #include "components/linechart.h"
+#include "components/mousearea.h"
 #include "components/panel.h"
 #include "components/piechart.h"
 #include "components/progress.h"

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "components/mousearea.h"
 #include "components/theme.h"
 #include "core/dsl.h"
 #include "core/image.h"
@@ -81,71 +82,60 @@ public:
         const std::function<void(float)> onChange = onChange_;
         CarouselState& state = stateFor(id_);
         const core::Transition cardTransition = state.directMotion ? core::Transition::none() : transition_;
-        const auto scrollToIndex = [&state, count, center, onChange](const core::ScrollEvent& event) {
-            if (!onChange || count <= 1 || event.y == 0.0) {
-                return;
-            }
-            constexpr float scrollSensitivity = 0.18f;
-            const float delta = std::clamp(static_cast<float>(event.y), -1.0f, 1.0f);
-            const float next = clampIndex(center - delta * scrollSensitivity, count);
-            if (state.hasEmittedIndex && !shouldEmitIndex(state.emittedIndex, next)) {
-                return;
-            }
-            state.directMotion = true;
-            state.emittedIndex = next;
-            state.hasEmittedIndex = true;
-            onChange(next);
-        };
-        const auto beginRootDrag = [&state, center, safeWidth](const core::PointerEvent&, const core::Rect& bounds) {
-            state.dragStartIndex = center;
-            state.pointerScale = bounds.width > 0.0f ? bounds.width / safeWidth : 1.0f;
-            state.directMotion = true;
-            state.emittedIndex = center;
-            state.hasEmittedIndex = true;
-        };
-        const auto beginCardDrag = [&state, center, cardWidth](const core::PointerEvent&, const core::Rect& bounds) {
-            state.dragStartIndex = center;
-            state.pointerScale = bounds.width > 0.0f ? bounds.width / cardWidth : 1.0f;
-            state.directMotion = true;
-            state.emittedIndex = center;
-            state.hasEmittedIndex = true;
-        };
-        const auto dragToIndex = [&state, count, dragStep, onChange](const core::dsl::DragEvent& event) {
-            if (!onChange || count <= 1 || dragStep <= 0.0f) {
-                return;
-            }
-            const float logicalTotalX = static_cast<float>(event.totalX) / std::max(0.001f, state.pointerScale);
-            const float next = clampIndex(state.dragStartIndex - logicalTotalX / dragStep, count);
-            if (state.hasEmittedIndex && !shouldEmitIndex(state.emittedIndex, next)) {
-                return;
-            }
-            state.directMotion = true;
-            state.emittedIndex = next;
-            state.hasEmittedIndex = true;
-            onChange(next);
-        };
-        const auto jumpToIndex = [&state, count, onChange](float next) {
+        const auto emitIndex = [&state, count, onChange](float next, bool directMotion) {
             if (!onChange || count <= 1) {
                 return;
             }
-            state.directMotion = false;
             const float clamped = clampIndex(next, count);
+            if (state.hasEmittedIndex && !shouldEmitIndex(state.emittedIndex, clamped)) {
+                return;
+            }
+            state.directMotion = directMotion;
             state.emittedIndex = clamped;
             state.hasEmittedIndex = true;
             onChange(clamped);
+        };
+        const auto scrollToIndex = [center, emitIndex](const MouseScrollEvent& event) {
+            if (event.stepY == 0.0f) {
+                return;
+            }
+            emitIndex(center - event.stepY, true);
+        };
+        const auto beginDrag = [&state, center](const MouseEvent&) {
+            state.dragStartIndex = center;
+            state.directMotion = true;
+            state.emittedIndex = center;
+            state.hasEmittedIndex = true;
+        };
+        const auto dragToIndex = [&state, dragStep, emitIndex](const MouseDragEvent& event) {
+            if (dragStep <= 0.0f) {
+                return;
+            }
+            emitIndex(state.dragStartIndex - event.totalX / dragStep, true);
+        };
+        const auto jumpToIndex = [emitIndex](float next) {
+            emitIndex(next, false);
         };
 
         ui_.stack(id_)
             .size(safeWidth, safeHeight)
             .clip()
-            .onScroll(scrollToIndex)
-            .onPress(beginRootDrag)
-            .onDrag(dragToIndex)
             .content([&] {
                 if (count == 0) {
                     drawEmptyState(safeWidth, safeHeight);
                     return;
                 }
+
+                mouseArea(ui_, id_ + ".input")
+                    .size(safeWidth, safeHeight)
+                    .zIndex(kRootInputZIndex)
+                    .scrollStep(kScrollStep)
+                    .maxScrollStep(1.0f)
+                    .dragThreshold(kDragThreshold)
+                    .onScroll(scrollToIndex)
+                    .onDragStart(beginDrag)
+                    .onDrag(dragToIndex)
+                    .build();
 
                 const int anchorIndex = static_cast<int>(std::floor(center));
                 for (int offset = -1; offset <= 2; ++offset) {
@@ -153,7 +143,7 @@ public:
                     if (itemIndex < 0 || itemIndex >= count) {
                         continue;
                     }
-                    drawCard(itemIndex, cardX, 0.0f, cardWidth, cardHeight, sideStep, center, cardTransition, jumpToIndex, scrollToIndex, beginCardDrag, dragToIndex);
+                    drawCard(itemIndex, cardX, 0.0f, cardWidth, cardHeight, sideStep, center, cardTransition, jumpToIndex, scrollToIndex, beginDrag, dragToIndex);
                 }
 
                 drawIndicators(safeWidth, safeHeight, count, static_cast<int>(std::round(center)), jumpToIndex);
@@ -166,6 +156,9 @@ private:
     static constexpr float kDetailedDistance = 1.05f;
     static constexpr float kInteractiveDistance = 1.30f;
     static constexpr float kIndexEmitThreshold = 0.01f;
+    static constexpr float kScrollStep = 0.18f;
+    static constexpr float kDragThreshold = 3.0f;
+    static constexpr int kRootInputZIndex = -1000;
 
     static float clampIndex(float value, int count) {
         if (count <= 0) {
@@ -186,7 +179,6 @@ private:
     struct CarouselState {
         float dragStartIndex = 0.0f;
         float emittedIndex = 0.0f;
-        float pointerScale = 1.0f;
         bool directMotion = false;
         bool hasEmittedIndex = false;
     };
@@ -224,9 +216,9 @@ private:
                   float center,
                   const core::Transition& cardTransition,
                   const std::function<void(float)>& onChange,
-                  const std::function<void(const core::ScrollEvent&)>& onScroll,
-                  const std::function<void(const core::PointerEvent&, const core::Rect&)>& onPress,
-                  const std::function<void(const core::dsl::DragEvent&)>& onDrag) {
+                  const std::function<void(const MouseScrollEvent&)>& onScroll,
+                  const std::function<void(const MouseEvent&)>& onDragStart,
+                  const std::function<void(const MouseDragEvent&)>& onDrag) {
         const CarouselItem& item = items_[static_cast<std::size_t>(itemIndex)];
         const float distance = static_cast<float>(itemIndex) - center;
         const float absDistance = std::fabs(distance);
@@ -331,17 +323,20 @@ private:
                 }
 
                 if (interactive) {
-                    ui_.rect(cardId + ".hit")
+                    mouseArea(ui_, cardId + ".hit")
                         .size(cardWidth, cardHeight)
-                        .color(theme::color(0.0f, 0.0f, 0.0f, 0.0f))
+                        .zIndex(20)
                         .radius(style_.radius)
-                        .onClick([onChange, itemIndex] {
+                        .scrollStep(kScrollStep)
+                        .maxScrollStep(1.0f)
+                        .dragThreshold(kDragThreshold)
+                        .onTap([onChange, itemIndex] {
                             if (onChange) {
                                 onChange(static_cast<float>(itemIndex));
                             }
                         })
                         .onScroll(onScroll)
-                        .onPress(onPress)
+                        .onDragStart(onDragStart)
                         .onDrag(onDrag)
                         .build();
                 }

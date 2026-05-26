@@ -987,7 +987,14 @@ private:
         const Rect bounds = toPixelRect(element.frame, dpiScale);
         const bool enabled = element.interactive && !element.disabled;
         const bool topmostHover = enabled && element.id == hoverTargetId;
+        const bool wasHover = instance.state.hover;
         instance.state.update(bounds, event, topmostHover, enabled);
+
+        if (enabled && wasHover != instance.state.hover && element.onHoverChanged) {
+            element.onHoverChanged(instance.state.hover);
+            needsCompose_ = true;
+            needsRender_ = true;
+        }
 
         if (enabled && instance.state.hover && element.cursor == CursorShape::Hand) {
             wantsHandCursor_ = true;
@@ -1019,6 +1026,12 @@ private:
         if (enabled && instance.state.clicked && element.onClick) {
             element.onClick();
             needsCompose_ = true;
+        }
+
+        if (enabled && instance.state.released && element.onRelease) {
+            element.onRelease(event, bounds);
+            needsCompose_ = true;
+            needsRender_ = true;
         }
 
         if (enabled && instance.state.pressed && element.onDrag &&

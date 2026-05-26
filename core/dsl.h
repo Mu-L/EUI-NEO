@@ -130,7 +130,9 @@ struct Element {
     bool smoothStateColors = true;
     std::function<void()> onClick;
     std::function<void(const PointerEvent&, const Rect&)> onPress;
+    std::function<void(const PointerEvent&, const Rect&)> onRelease;
     std::function<void(const PointerEvent&, const Rect&)> onContextMenu;
+    std::function<void(bool)> onHoverChanged;
     std::function<void(bool)> onFocusChanged;
     std::function<void(const KeyboardEvent&)> onTextInput;
     std::function<void(const ScrollEvent&)> onScroll;
@@ -493,10 +495,23 @@ public:
         return self();
     }
 
+    Derived& onRelease(std::function<void(const PointerEvent&, const Rect&)> callback) {
+        element_->interactive = true;
+        element_->cursor = CursorShape::Hand;
+        element_->onRelease = std::move(callback);
+        return self();
+    }
+
     Derived& onContextMenu(std::function<void(const PointerEvent&, const Rect&)> callback) {
         element_->interactive = true;
         element_->cursor = CursorShape::Hand;
         element_->onContextMenu = std::move(callback);
+        return self();
+    }
+
+    Derived& onHoverChanged(std::function<void(bool)> callback) {
+        element_->interactive = true;
+        element_->onHoverChanged = std::move(callback);
         return self();
     }
 

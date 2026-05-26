@@ -114,6 +114,10 @@ ui.stack("root")
 .enabled(true)
 .cursor(core::CursorShape::Hand)
 .onClick(callback)
+.onPress(callback)
+.onRelease(callback)
+.onContextMenu(callback)
+.onHoverChanged(callback)
 .focusable()
 .onFocusChanged(callback)
 .onTextInput(callback)
@@ -122,6 +126,8 @@ ui.stack("root")
 ```
 
 `.onClick(...)` 会自动开启 interactive，并把 cursor 设置为手型。Runtime 会做 topmost hit-test、按下捕获、点击判定和回调派发。
+
+底层 DSL 的 `onPress/onRelease/onDrag/onScroll` 回调直接使用 Runtime 原始事件。页面或组件需要 tap、拖拽阈值、滚轮步进、局部坐标、进入/离开 hover 时，优先用组件层的 `components::mouseArea(ui, id)`。
 
 示例：
 
@@ -323,6 +329,7 @@ Frame 动画需要显式 `.animate(core::AnimProperty::Frame)`。窗口大小变
 - `components::text(ui, id)`：返回套用 theme token 文本色的 `TextBuilder`。
 - `components::label(ui, id)`：返回套用 theme token 文本色的 label builder。
 - `components::image(ui, id)`：返回套用 theme token 的 `ImageBuilder`。
+- `components::mouseArea(ui, id)`：透明输入热区，封装 tap、press、release、hover、drag、scroll、context menu。
 - `components::button(ui, id)`：薄 builder，内部组合 `Stack + Rect + Row + Text`。
 - `components::checkbox(ui, id)`：无状态 checkbox，点击回调 next checked。
 - `components::radio(ui, id)`：无状态 radio，点击回调 select / next checked。
@@ -383,7 +390,7 @@ components::button(ui, "save")
 - `components::scroll` 现在负责滚动条和 offset，内容区可以用 `.clip()` + `y(-offset)` 组合实现裁剪滚动。
 - 已有基础键盘 focus / text input / 选择 / 剪贴板；IME 组合态和撤销栈还没做。
 - 还没有事件冒泡。
-- 已有 click / text input / scroll / drag 回调，还没有公开 hover 回调。
+- 已有 click / press / release / hover changed / context menu / text input / scroll / drag 回调；更顺手的手势开发优先用 `components::mouseArea`。
 - transform 后的 hit-test 仍按布局矩形计算。
 - id 移除后的实例缓存目前不会主动回收，只是不再绘制。
 - 脏区渲染是保守矩形，复杂重叠场景可能扩大重绘区域。

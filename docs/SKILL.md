@@ -138,6 +138,7 @@ Use existing files as reference patterns:
 - Internal background `Rect` usually owns hover/pressed visuals and click handling.
 - If the whole component should scale or fade with a child visual state, use `.visualStateFrom(...)` or `.hoverOpacityFrom(...)` on an outer container.
 - Prefer `.states(normal, hover, pressed)` on `Rect` instead of hand-rolling hover logic.
+- Prefer `components::mouseArea(...)` for tap/press/release/hover/drag/scroll/context-menu input instead of hand-wiring raw `.onPress(...)`, `.onDrag(...)`, and `.onScroll(...)` in every component.
 - If a component exposes style overrides, support both `.style(...)` and `.theme(...)` when appropriate.
 - Public API names should follow the repo’s current style such as `datepicker`, `timepicker`, `toggleSwitch`, `dataTable`.
 - Keep geometry math local to `build()`, and keep it deterministic from current builder fields.
@@ -148,6 +149,8 @@ Avoid these mistakes:
 - Reading raw input devices directly
 - Creating unstable ids from changing text/value content
 - Making components depend on global mutable singletons unless the repo already uses that pattern for the same problem
+- Putting business-specific names or actions into `core/` or generic components
+- Fixing interaction bugs with visual masking tricks instead of correcting the geometry/event logic
 
 ## Easy-To-Miss UI Pitfalls
 
@@ -172,7 +175,7 @@ Available primitives and containers are:
 Important shared builder capabilities from `core/dsl.h`:
 
 - Layout: `.x()`, `.y()`, `.size()`, `.margin()`, `.gap()`, `.align()`, `.clip()`, `.zIndex()`
-- Interaction: `.interactive()`, `.onClick()`, `.focusable()`, `.onFocusChanged()`, `.onTextInput()`, `.onScroll()`, `.onDrag()`
+- Interaction: `.interactive()`, `.onClick()`, `.onPress()`, `.onRelease()`, `.onHoverChanged()`, `.onContextMenu()`, `.focusable()`, `.onFocusChanged()`, `.onTextInput()`, `.onScroll()`, `.onDrag()`
 - Motion: `.transition(...)`, `.animate(...)`, transform properties
 
 Important current layout capabilities:
@@ -229,6 +232,12 @@ For click/hover visuals:
 - Put `.states(...)` on a `Rect`
 - Put `.transition(...)` on the nodes that should animate
 - Use outer `Stack` wrappers when the visual effect needs to coordinate multiple children
+
+For gesture-heavy input:
+
+- Use `components::mouseArea(ui, id)` as the high-level input layer.
+- Use `MouseEvent` local coordinates instead of manually converting Runtime pointer/bounds in each component.
+- Use `dragThreshold(...)` and `suppressClickAfterDrag(...)` instead of custom click-vs-drag flags unless the component has a special reason.
 
 ## Windows, Tray, And Multi-Page Apps
 
