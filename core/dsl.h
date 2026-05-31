@@ -3,7 +3,7 @@
 #include "core/layout.h"
 #include "core/animation.h"
 #include "core/platform/event.h"
-#include "core/render/image.h"
+#include "core/render/image_types.h"
 #include "core/render/primitive.h"
 #include "core/render/text.h"
 

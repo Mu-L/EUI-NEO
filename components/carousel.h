@@ -3,7 +3,6 @@
 #include "components/mousearea.h"
 #include "components/theme.h"
 #include "core/dsl.h"
-#include "core/render/image.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/render/image_types.h"
 #include "core/render/primitive.h"
 
 #include <memory>
@@ -7,12 +8,6 @@
 #include <vector>
 
 namespace core {
-
-enum class ImageFit {
-    Cover,
-    Contain,
-    Stretch
-};
 
 class ImagePrimitive {
 public:
