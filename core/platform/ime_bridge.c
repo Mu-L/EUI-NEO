@@ -5,6 +5,8 @@
 #endif
 #include <GLFW/glfw3.h>
 
+#include <string.h>
+
 #if defined(_WIN32)
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -217,6 +219,25 @@ int eui_ime_get_composition_string_utf8(GLFWwindow* window, char* buffer, int bu
     return written - 1;
 }
 
+void eui_ime_clear_composition(GLFWwindow* window) {
+    if (window == 0) {
+        return;
+    }
+
+    HWND hwnd = glfwGetWin32Window(window);
+    if (hwnd == 0) {
+        return;
+    }
+
+    HIMC context = ImmGetContext(hwnd);
+    if (context == 0) {
+        return;
+    }
+
+    ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
+    ImmReleaseContext(hwnd, context);
+}
+
 #elif defined(__APPLE__)
 #define GLFW_EXPOSE_NATIVE_COCOA
 #include <GLFW/glfw3native.h>
@@ -227,6 +248,82 @@ int eui_ime_get_composition_string_utf8(GLFWwindow* window, char* buffer, int bu
 static char euiImeRectKey;
 static Class euiImeSwizzledClass = Nil;
 static IMP euiImeOriginalFirstRect = nil;
+
+static int eui_ime_copy_nsstring_utf8(NSString* text, char* buffer, int bufferSize) {
+    if (buffer != 0 && bufferSize > 0) {
+        buffer[0] = '\0';
+    }
+    if (text == nil || buffer == 0 || bufferSize <= 0 || [text length] == 0) {
+        return 0;
+    }
+
+    const char* utf8 = [text UTF8String];
+    if (utf8 == 0 || utf8[0] == '\0') {
+        return 0;
+    }
+
+    const NSUInteger length = [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+    const int copyLength = (int)MIN((NSUInteger)(bufferSize - 1), length);
+    memcpy(buffer, utf8, (size_t)copyLength);
+    buffer[copyLength] = '\0';
+    return copyLength;
+}
+
+static NSString* eui_ime_marked_text(NSView* view) {
+    if (view == nil) {
+        return nil;
+    }
+
+    Ivar markedTextIvar = class_getInstanceVariable([view class], "markedText");
+    if (markedTextIvar != nil) {
+        id markedText = object_getIvar(view, markedTextIvar);
+        if ([markedText isKindOfClass:[NSAttributedString class]]) {
+            return [(NSAttributedString*)markedText string];
+        }
+        if ([markedText isKindOfClass:[NSString class]]) {
+            return (NSString*)markedText;
+        }
+    }
+
+    if ([view respondsToSelector:@selector(markedRange)] &&
+        [view respondsToSelector:@selector(attributedSubstringForProposedRange:actualRange:)]) {
+        NSRange markedRange = [(id)view markedRange];
+        if (markedRange.location != NSNotFound && markedRange.length > 0) {
+            NSRange actualRange = NSMakeRange(NSNotFound, 0);
+            NSAttributedString* attributedText = [(id)view attributedSubstringForProposedRange:markedRange
+                                                                                   actualRange:&actualRange];
+            return [attributedText string];
+        }
+    }
+
+    return nil;
+}
+
+static void eui_ime_clear_marked_text(NSView* view) {
+    if (view == nil) {
+        return;
+    }
+
+    Ivar markedTextIvar = class_getInstanceVariable([view class], "markedText");
+    if (markedTextIvar != nil) {
+        id markedText = object_getIvar(view, markedTextIvar);
+        if ([markedText isKindOfClass:[NSMutableAttributedString class]]) {
+            [[(NSMutableAttributedString*)markedText mutableString] setString:@""];
+            return;
+        }
+        if ([markedText isKindOfClass:[NSAttributedString class]] ||
+            [markedText isKindOfClass:[NSString class]]) {
+            NSMutableAttributedString* empty = [[NSMutableAttributedString alloc] init];
+            object_setIvar(view, markedTextIvar, empty);
+            [empty release];
+            return;
+        }
+    }
+
+    if ([view respondsToSelector:@selector(unmarkText)]) {
+        [(id)view unmarkText];
+    }
+}
 
 static NSRect eui_ime_first_rect_for_character_range(id self, SEL selector, NSRange range, NSRangePointer actualRange) {
     if (actualRange != nil) {
@@ -302,7 +399,16 @@ void eui_ime_set_cursor_rect_with_font(GLFWwindow* window, double x, double y, d
 }
 
 void eui_ime_install_message_filter(GLFWwindow* window) {
-    (void)window;
+    if (window == 0) {
+        return;
+    }
+
+    NSWindow* nsWindow = glfwGetCocoaWindow(window);
+    if (nsWindow == nil) {
+        return;
+    }
+
+    eui_ime_prepare_view([nsWindow contentView]);
 }
 
 void eui_ime_uninstall_message_filter(GLFWwindow* window) {
@@ -320,20 +426,47 @@ int eui_ime_is_composing(GLFWwindow* window) {
     }
 
     NSView* view = [nsWindow contentView];
-    if (view == nil || ![view respondsToSelector:@selector(markedRange)]) {
+    if (view == nil) {
         return 0;
     }
 
-    NSRange markedRange = [(id)view markedRange];
-    return markedRange.location != NSNotFound && markedRange.length > 0 ? 1 : 0;
+    if ([view respondsToSelector:@selector(hasMarkedText)] && [(id)view hasMarkedText]) {
+        return 1;
+    }
+
+    NSString* markedText = eui_ime_marked_text(view);
+    return markedText != nil && [markedText length] > 0 ? 1 : 0;
 }
 
 int eui_ime_get_composition_string_utf8(GLFWwindow* window, char* buffer, int bufferSize) {
-    (void)window;
     if (buffer != 0 && bufferSize > 0) {
         buffer[0] = '\0';
     }
-    return 0;
+    if (window == 0 || buffer == 0 || bufferSize <= 0) {
+        return 0;
+    }
+
+    NSWindow* nsWindow = glfwGetCocoaWindow(window);
+    if (nsWindow == nil) {
+        return 0;
+    }
+
+    NSView* view = [nsWindow contentView];
+    eui_ime_prepare_view(view);
+    return eui_ime_copy_nsstring_utf8(eui_ime_marked_text(view), buffer, bufferSize);
+}
+
+void eui_ime_clear_composition(GLFWwindow* window) {
+    if (window == 0) {
+        return;
+    }
+
+    NSWindow* nsWindow = glfwGetCocoaWindow(window);
+    if (nsWindow == nil) {
+        return;
+    }
+
+    eui_ime_clear_marked_text([nsWindow contentView]);
 }
 
 #else
@@ -370,6 +503,10 @@ int eui_ime_get_composition_string_utf8(GLFWwindow* window, char* buffer, int bu
         buffer[0] = '\0';
     }
     return 0;
+}
+
+void eui_ime_clear_composition(GLFWwindow* window) {
+    (void)window;
 }
 
 #endif

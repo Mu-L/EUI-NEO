@@ -201,6 +201,7 @@ inline void installInputCallbacks(window::Handle window) {
     glfwSetCharCallback(glfwWindow, [](GLFWwindow* currentWindow, unsigned int codepoint) {
         detail::InputQueue& queue = detail::inputQueue(currentWindow);
         detail::appendUtf8(queue.text, codepoint);
+        eui_ime_clear_composition(currentWindow);
         queue.compositionText.clear();
         queue.compositionChanged = true;
         detail::setComposing(currentWindow, false);
@@ -273,7 +274,7 @@ inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle w
     if (!queuedCompositionChanged && keyboard.composing) {
         keyboard.compositionText = previousCompositionText;
     }
-#if !defined(EUI_WINDOW_BACKEND_SDL2) && defined(_WIN32)
+#if !defined(EUI_WINDOW_BACKEND_SDL2) && (defined(_WIN32) || defined(__APPLE__))
     char compositionBuffer[512];
     const int compositionLength = eui_ime_get_composition_string_utf8(
         static_cast<GLFWwindow*>(window),
