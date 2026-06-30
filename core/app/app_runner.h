@@ -348,11 +348,15 @@ struct AppRunner {
     }
 
     void advanceFrameClock(double now, bool animating) {
-        if (animating || renderedSinceLastClock) {
+        if (animating) {
             nextFrameTime += frameInterval;
-            if (nextFrameTime <= now || nextFrameTime > now + frameInterval * 2.0) {
+            if (nextFrameTime > now + frameInterval * 2.0) {
                 nextFrameTime = now + frameInterval;
+            } else if (nextFrameTime < now - frameInterval) {
+                nextFrameTime = now;
             }
+        } else if (renderedSinceLastClock) {
+            nextFrameTime = now + frameInterval;
         } else {
             nextFrameTime = now;
         }
