@@ -216,6 +216,7 @@ public:
     virtual void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) = 0;
     virtual void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) = 0;
     virtual void drawRoundedRect(const RoundedRectDrawCommand& command, int windowWidth, int windowHeight) = 0;
+    virtual void drawPolygon(const PolygonDrawCommand& command, int windowWidth, int windowHeight) = 0;
     virtual void drawText(const TextDrawCommand& command, int windowWidth, int windowHeight) = 0;
     virtual TextureHandle createTexture(const unsigned char* pixels, int width, int height) {
         (void)pixels;

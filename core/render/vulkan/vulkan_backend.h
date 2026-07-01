@@ -39,6 +39,7 @@ public:
     void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) override;
     void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) override;
     void drawRoundedRect(const RoundedRectDrawCommand& command, int windowWidth, int windowHeight) override;
+    void drawPolygon(const PolygonDrawCommand& command, int windowWidth, int windowHeight) override;
     void drawText(const TextDrawCommand& command, int windowWidth, int windowHeight) override;
     TextureHandle createTexture(const unsigned char* pixels, int width, int height) override;
     bool updateTexture(TextureHandle handle, const unsigned char* pixels, int width, int height) override;
@@ -168,6 +169,8 @@ private:
                                VkImageLayout newLayout);
     VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) const;
     bool ensureRoundedRectPipeline();
+    bool ensurePolygonPipeline();
+    bool ensurePolygonEdgeBuffer(std::size_t edgeCount);
     bool ensureBackdropResources(std::uint32_t width, std::uint32_t height);
     bool ensureBackdropDescriptor();
     void initializeBackdropImageIfNeeded();
@@ -184,6 +187,8 @@ private:
     bool createUploadBuffer(VkDeviceSize capacity);
     void destroyUploadBuffer();
     void destroyRoundedRectPipeline();
+    void destroyPolygonPipeline();
+    void destroyPolygonEdgeBuffer();
     void destroyBackdropResources();
     void destroyBackdropDescriptorPool();
     void destroyPrimitiveVertexBuffer();
@@ -249,6 +254,12 @@ private:
     VkImageLayout backdropImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     VkExtent2D backdropExtent_{};
     MappedBuffer primitiveVertices_;
+    VkDescriptorSetLayout polygonDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool polygonDescriptorPool_ = VK_NULL_HANDLE;
+    VkDescriptorSet polygonDescriptorSet_ = VK_NULL_HANDLE;
+    VkPipelineLayout polygonPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline polygonPipeline_ = VK_NULL_HANDLE;
+    MappedBuffer polygonEdges_;
 
     VkImage renderCacheImage_ = VK_NULL_HANDLE;
     VkDeviceMemory renderCacheMemory_ = VK_NULL_HANDLE;

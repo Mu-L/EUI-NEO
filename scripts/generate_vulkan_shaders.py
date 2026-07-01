@@ -32,6 +32,15 @@ GROUPS = [
         ],
     },
     {
+        "name": "Polygon",
+        "comment": "polygon.vert and polygon.frag",
+        "header": "vulkan_polygon_shaders.h",
+        "stages": [
+            ("Vertex", "polygon.vert"),
+            ("Fragment", "polygon.frag"),
+        ],
+    },
+    {
         "name": "Image",
         "comment": "image.vert and image.frag",
         "header": "vulkan_image_shaders.h",

@@ -54,6 +54,7 @@ OpenGLRenderBackend::~OpenGLRenderBackend() {
     makeCurrent();
     releaseRenderCache();
     releasePrimitiveResources();
+    releasePolygonResources();
     releaseTextResources();
     releaseImageResources();
 #if defined(EUI_WINDOW_BACKEND_SDL2)

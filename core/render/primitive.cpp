@@ -238,24 +238,24 @@ void PolygonPrimitive::render(int windowWidth, int windowHeight) const {
         return;
     }
 
-    core::render::RoundedRectDrawCommand command{};
-    command.vertices.reserve((renderPoints.size() - 2u) * 3u);
-    core::render::appendPolygonTriangleFan(command.vertices,
-                                           impl_->bounds,
-                                           impl_->transform,
-                                           impl_->transformMatrix,
-                                           impl_->hasTransformMatrix,
-                                           renderPoints);
+    constexpr float polygonAntialiasExtent = 2.0f;
+    const Rect geometryBounds = core::render::expandPrimitiveRect(impl_->bounds, polygonAntialiasExtent);
+    core::render::PolygonDrawCommand command{};
+    const auto vertices = core::render::polygonGeometryVertices(
+        impl_->bounds, impl_->transform, impl_->transformMatrix, impl_->hasTransformMatrix, geometryBounds);
+    command.vertices.assign(vertices.begin(), vertices.end());
+    command.edges.reserve(renderPoints.size());
+    for (std::size_t index = 0; index < renderPoints.size(); ++index) {
+        const Vec2& from = renderPoints[index];
+        const Vec2& to = renderPoints[(index + 1u) % renderPoints.size()];
+        command.edges.push_back({
+            {impl_->bounds.x + from.x, impl_->bounds.y + from.y},
+            {impl_->bounds.x + to.x, impl_->bounds.y + to.y}
+        });
+    }
     command.fillColor = impl_->color;
-    command.border = {};
-    command.gradient = {};
-    command.rect = impl_->bounds;
-    command.radius = 0.0f;
     command.opacity = impl_->opacity;
-    command.shadowBlur = 1.0f;
-    command.shadowPass = false;
-    command.insetShadowPass = false;
-    backend->drawRoundedRect(command, windowWidth, windowHeight);
+    backend->drawPolygon(command, windowWidth, windowHeight);
 }
 
 } // namespace core

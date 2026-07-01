@@ -89,6 +89,7 @@ set(EUI_VULKAN_BACKEND_SOURCES
     core/render/vulkan/vulkan_backend.cpp
     core/render/vulkan/vulkan_cache.cpp
     core/render/vulkan/vulkan_primitives.cpp
+    core/render/vulkan/vulkan_polygon.cpp
     core/render/vulkan/vulkan_text.cpp
     core/render/vulkan/vulkan_image.cpp
 )

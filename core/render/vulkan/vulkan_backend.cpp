@@ -325,6 +325,7 @@ void VulkanRenderBackend::beginFrame(const RenderSurface& surface) {
     activeLayer_ = nullptr;
     backdropReady_ = false;
     primitiveVertices_.used = 0;
+    polygonEdges_.used = 0;
     textVertices_.used = 0;
     imageVertices_.used = 0;
 }
@@ -896,6 +897,7 @@ void VulkanRenderBackend::destroySwapchain() {
     renderPassActive_ = false;
     renderTarget_ = RenderTarget::Swapchain;
     destroyRoundedRectPipeline();
+    destroyPolygonPipeline();
     destroyBackdropResources();
     destroyTextPipeline();
     destroyTextResources();
@@ -960,6 +962,7 @@ void VulkanRenderBackend::destroy() {
     }
     layers_.clear();
     destroyPrimitiveVertexBuffer();
+    destroyPolygonEdgeBuffer();
     for (VkDescriptorPool pool : imageDescriptorPools_) {
         if (pool != VK_NULL_HANDLE) {
             vkDestroyDescriptorPool(device_, pool, nullptr);

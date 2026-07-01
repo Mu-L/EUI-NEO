@@ -44,6 +44,7 @@ public:
     void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) override;
     void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) override;
     void drawRoundedRect(const RoundedRectDrawCommand& command, int windowWidth, int windowHeight) override;
+    void drawPolygon(const PolygonDrawCommand& command, int windowWidth, int windowHeight) override;
     void drawText(const TextDrawCommand& command, int windowWidth, int windowHeight) override;
     TextureHandle createTexture(const unsigned char* pixels, int width, int height) override;
     bool updateTexture(TextureHandle handle, const unsigned char* pixels, int width, int height) override;
@@ -65,6 +66,7 @@ public:
 
 private:
     void releasePrimitiveResources();
+    void releasePolygonResources();
     void releaseTextResources();
     bool ensureImageResources();
     unsigned int compileImageShader(unsigned int type, const char* source) const;

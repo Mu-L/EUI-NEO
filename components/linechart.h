@@ -79,7 +79,10 @@ public:
         const float plotWidth = std::max(1.0f, width_ - 56.0f);
         const float plotHeight = std::max(1.0f, height_ - 112.0f);
         const float bottomY = plotY + plotHeight;
-        const int count = static_cast<int>(values_.size());
+        AnimState& anim = ui_.state<AnimState>(id_ + ".anim");
+        syncAnimation(anim);
+        const std::vector<float>& displayValues = anim.display;
+        const int count = static_cast<int>(displayValues.size());
         const float stepX = count > 1 ? plotWidth / static_cast<float>(count - 1) : 0.0f;
         const float lineHeight = 4.0f;
         const float pointSize = 13.0f;
@@ -116,32 +119,28 @@ public:
                 }
 
                 for (int index = 0; index + 1 < count; ++index) {
-                    const core::Vec2 from = pointAt(index, plotX, bottomY, plotHeight, stepX);
-                    const core::Vec2 to = pointAt(index + 1, plotX, bottomY, plotHeight, stepX);
-                    const float dx = to.x - from.x;
-                    const float dy = to.y - from.y;
-                    const float length = std::sqrt(dx * dx + dy * dy);
-                    const float angle = std::atan2(dy, dx);
-                    const float midX = (from.x + to.x) * 0.5f;
-                    const float midY = (from.y + to.y) * 0.5f;
+                    const core::Vec2 from = pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX);
+                    const core::Vec2 to = pointAt(displayValues, index + 1, plotX, bottomY, plotHeight, stepX);
+                    const float radius = lineHeight * 0.5f;
+                    const float segmentX = std::min(from.x, to.x) - radius;
+                    const float segmentY = std::min(from.y, to.y) - radius;
+                    const float segmentWidth = std::fabs(to.x - from.x) + lineHeight;
+                    const float segmentHeight = std::fabs(to.y - from.y) + lineHeight;
 
-                    ui_.rect(id_ + ".segment." + std::to_string(index))
-                        .x(midX - length * 0.5f)
-                        .y(midY - lineHeight * 0.5f)
-                        .size(length, lineHeight)
+                    ui_.polygon(id_ + ".segment." + std::to_string(index))
+                        .x(segmentX)
+                        .y(segmentY)
+                        .size(segmentWidth, segmentHeight)
+                        .points(capsulePoints(from, to, radius, segmentX, segmentY))
                         .color(style_.line)
-                        .radius(lineHeight * 0.5f)
-                        .rotate(angle)
-                        .transformOrigin(0.5f, 0.5f)
                         .transition(transition_)
-                        .animate(core::AnimProperty::Frame | core::AnimProperty::Transform)
                         .build();
                 }
 
                 std::vector<TooltipItem> tooltips;
-                tooltips.reserve(values_.size());
+                tooltips.reserve(displayValues.size());
                 for (int index = 0; index < count; ++index) {
-                    const core::Vec2 point = pointAt(index, plotX, bottomY, plotHeight, stepX);
+                    const core::Vec2 point = pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX);
                     const std::string pointId = id_ + ".point." + std::to_string(index);
                     ui_.rect(pointId)
                         .x(point.x - pointSize * 0.5f)
@@ -151,16 +150,16 @@ public:
                         .radius(pointSize * 0.5f)
                         .instantStates()
                         .transition(transition_)
-                        .animate(core::AnimProperty::Frame | core::AnimProperty::Color)
+                        .animate(core::AnimProperty::Color)
                         .onClick([] {})
                         .build();
 
-                    tooltips.push_back({pointId, dataLabel(index) + "  " + percent(values_[index]), point.x, point.y});
+                    tooltips.push_back({pointId, dataLabel(index) + "  " + percent(valueAt(values_, index)), point.x, point.y});
                 }
 
                 const float labelWidth = std::max(28.0f, std::min(42.0f, count > 1 ? stepX : plotWidth));
                 for (int index = 0; index < count; ++index) {
-                    const core::Vec2 point = pointAt(index, plotX, bottomY, plotHeight, stepX);
+                    const core::Vec2 point = pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX);
                     const float labelX = std::clamp(point.x - labelWidth * 0.5f, 0.0f, std::max(0.0f, width_ - labelWidth));
                     label(id_ + ".label." + std::to_string(index), dataLabel(index), labelX, height_ - 34.0f, labelWidth);
                 }
@@ -174,17 +173,130 @@ public:
                         .style(tooltipStyle())
                         .build();
                 }
+
+                if (anim.animating) {
+                    ui_.stack(id_ + ".animator")
+                        .size(0.0f, 0.0f)
+                        .onTimer(0.016f, [] {})
+                        .build();
+                }
             })
             .build();
     }
 
 private:
-    core::Vec2 pointAt(int index, float plotX, float bottomY, float plotHeight, float stepX) const {
-        const float value = std::clamp(values_[index], 0.0f, 1.0f);
+    struct AnimState {
+        std::vector<float> display;
+        std::vector<float> target;
+        bool animating = false;
+    };
+
+    static float valueAt(const std::vector<float>& values, int index) {
+        if (index < 0 || index >= static_cast<int>(values.size())) {
+            return 0.0f;
+        }
+        return values[static_cast<std::size_t>(index)];
+    }
+
+    static bool closeValues(const std::vector<float>& left, const std::vector<float>& right) {
+        if (left.size() != right.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < left.size(); ++i) {
+            if (std::fabs(left[i] - right[i]) > 0.001f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void syncAnimation(AnimState& anim) const {
+        if (anim.display.size() != values_.size()) {
+            anim.display = values_;
+            anim.target = values_;
+            anim.animating = false;
+            return;
+        }
+
+        if (!closeValues(anim.target, values_)) {
+            anim.target = values_;
+            anim.animating = true;
+        }
+
+        if (!anim.animating) {
+            return;
+        }
+
+        bool moving = false;
+        for (std::size_t i = 0; i < anim.display.size(); ++i) {
+            const float next = anim.display[i] + (anim.target[i] - anim.display[i]) * 0.20f;
+            if (std::fabs(next - anim.target[i]) > 0.002f) {
+                anim.display[i] = next;
+                moving = true;
+            } else {
+                anim.display[i] = anim.target[i];
+            }
+        }
+        anim.animating = moving;
+    }
+
+    static core::Vec2 pointAt(const std::vector<float>& values,
+                              int index,
+                              float plotX,
+                              float bottomY,
+                              float plotHeight,
+                              float stepX) {
+        const float value = std::clamp(valueAt(values, index), 0.0f, 1.0f);
         return {
             plotX + static_cast<float>(index) * stepX,
             bottomY - value * plotHeight
         };
+    }
+
+    static std::vector<core::Vec2> capsulePoints(const core::Vec2& from,
+                                                 const core::Vec2& to,
+                                                 float radius,
+                                                 float originX,
+                                                 float originY) {
+        const float dx = to.x - from.x;
+        const float dy = to.y - from.y;
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (length <= 0.001f) {
+            return circlePoints(from, radius, originX, originY);
+        }
+
+        const float angle = std::atan2(dy, dx);
+        const float normalAngle = angle + 1.57079632679f;
+        std::vector<core::Vec2> points;
+        points.reserve(18u);
+        appendArc(points, to, radius, normalAngle, normalAngle - 3.14159265359f, originX, originY);
+        appendArc(points, from, radius, normalAngle - 3.14159265359f, normalAngle - 6.28318530718f, originX, originY);
+        return points;
+    }
+
+    static std::vector<core::Vec2> circlePoints(const core::Vec2& center, float radius, float originX, float originY) {
+        std::vector<core::Vec2> points;
+        points.reserve(18u);
+        appendArc(points, center, radius, 0.0f, 6.28318530718f, originX, originY);
+        return points;
+    }
+
+    static void appendArc(std::vector<core::Vec2>& points,
+                          const core::Vec2& center,
+                          float radius,
+                          float startAngle,
+                          float endAngle,
+                          float originX,
+                          float originY) {
+        constexpr int segments = 8;
+        for (int step = 0; step <= segments; ++step) {
+            const float t = static_cast<float>(step) / static_cast<float>(segments);
+            const float angle = startAngle + (endAngle - startAngle) * t;
+            points.push_back({
+                center.x + std::cos(angle) * radius - originX,
+                center.y + std::sin(angle) * radius - originY
+            });
+        }
     }
 
     void label(const std::string& id, const std::string& value, float x, float y, float width) {

@@ -31,6 +31,18 @@ struct RoundedRectDrawCommand {
     bool insetShadowPass = false;
 };
 
+struct PolygonEdgeData {
+    Vec2 from;
+    Vec2 to;
+};
+
+struct PolygonDrawCommand {
+    std::vector<PrimitiveGeometryVertex> vertices;
+    std::vector<PolygonEdgeData> edges;
+    Color fillColor{};
+    float opacity = 1.0f;
+};
+
 inline float roundedRectFillAlpha(const RoundedRectDrawCommand& command) {
     return command.gradient.enabled && !command.shadowPass
         ? std::max(command.gradient.start.a, command.gradient.end.a)
@@ -140,6 +152,14 @@ inline std::array<PrimitiveGeometryVertex, 6> roundedRectGeometryVertices(const 
         {{p2.x, p2.y, p2.z}, {right, bottom}},
         {{p3.x, p3.y, p3.z}, {left, bottom}}
     }};
+}
+
+inline std::array<PrimitiveGeometryVertex, 6> polygonGeometryVertices(const Rect& bounds,
+                                                                      const Transform& transform,
+                                                                      const TransformMatrix& matrix,
+                                                                      bool hasTransformMatrix,
+                                                                      const Rect& geometryBounds) {
+    return roundedRectGeometryVertices(bounds, transform, matrix, hasTransformMatrix, geometryBounds);
 }
 
 inline void appendPolygonTriangleFan(std::vector<PrimitiveGeometryVertex>& vertices,
