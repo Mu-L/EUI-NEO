@@ -344,6 +344,10 @@ if(EUI_BUILD_APPS)
         endif()
         add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} "${app_source}" ${APP_ICON_RESOURCE})
         eui_neo_configure_app(${app_name})
+        if(app_name STREQUAL "serial_tool" AND
+           EUI_ENABLE_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules/serial/serial.h")
+            target_link_libraries(${app_name} PRIVATE eui::module_serial)
+        endif()
     endforeach()
 endif()
 
