@@ -146,6 +146,7 @@ find_package(Python3 COMPONENTS Interpreter QUIET)
 
 set(CORE_SOURCES
     core/platform/async.cpp
+    core/platform/json.cpp
     core/platform/network.cpp
     core/platform/native_bridge.c
     core/platform/performance_stats.cpp
@@ -194,9 +195,27 @@ target_include_directories(eui_neo
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/eui-neo>
 )
+target_include_directories(eui_neo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/3rd/yyjson-0.12.0/src")
 target_link_libraries(eui_neo PUBLIC Threads::Threads)
 target_compile_features(eui_neo PUBLIC cxx_std_17)
+target_compile_definitions(eui_neo PRIVATE YYJSON_DISABLE_WRITER=1)
 eui_apply_compile_options(eui_neo)
+
+set(EUI_YYJSON_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/3rd/yyjson-0.12.0/src/yyjson.c")
+if(EUI_BUILD_SHARED)
+    add_library(eui_yyjson STATIC "${EUI_YYJSON_SOURCE}")
+    target_include_directories(eui_yyjson PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/3rd/yyjson-0.12.0/src")
+    target_compile_definitions(eui_yyjson PRIVATE YYJSON_DISABLE_WRITER=1)
+    set_target_properties(eui_yyjson PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        C_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+    )
+    eui_silence_third_party_warnings(eui_yyjson)
+    target_link_libraries(eui_neo PRIVATE eui_yyjson)
+else()
+    target_sources(eui_neo PRIVATE "${EUI_YYJSON_SOURCE}")
+endif()
 
 if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "opengl")
     target_compile_definitions(eui_neo PUBLIC EUI_RENDER_BACKEND_OPENGL=1)
@@ -221,16 +240,7 @@ else()
     set(EUI_APP_MAIN_SOURCE core/app/glfw_app_main.cpp)
 endif()
 
-if(TARGET harfbuzz::harfbuzz)
-    target_link_libraries(eui_neo PUBLIC harfbuzz::harfbuzz)
-    target_compile_definitions(eui_neo PUBLIC EUI_HAS_HARFBUZZ=1)
-elseif(TARGET PkgConfig::EUI_HARFBUZZ)
-    target_link_libraries(eui_neo PUBLIC Freetype::Freetype)
-    target_link_libraries(eui_neo PUBLIC PkgConfig::EUI_HARFBUZZ)
-    target_compile_definitions(eui_neo PUBLIC EUI_HAS_HARFBUZZ=1)
-else()
-    target_link_libraries(eui_neo PUBLIC Freetype::Freetype)
-endif()
+target_link_libraries(eui_neo PUBLIC Freetype::Freetype)
 
 # -----------------------------------------------------------------------------
 # Platform capabilities
@@ -292,6 +302,16 @@ function(eui_neo_copy_assets target_name)
     endif()
 endfunction()
 
+function(eui_neo_copy_runtime_dependencies target_name)
+    if(EUI_BUILD_SHARED AND EUI_WINDOW_BACKEND STREQUAL "glfw")
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:glfw>
+                $<TARGET_FILE_DIR:${target_name}>
+        )
+    endif()
+endfunction()
+
 function(eui_neo_copy_app_assets target_name asset_dir)
     if(EXISTS "${asset_dir}")
         add_custom_command(TARGET ${target_name} POST_BUILD
@@ -306,6 +326,7 @@ function(eui_neo_configure_app target_name)
     eui_apply_compile_options(${target_name})
     eui_apply_app_link_options(${target_name})
     eui_neo_copy_assets(${target_name})
+    eui_neo_copy_runtime_dependencies(${target_name})
 endfunction()
 
 # -----------------------------------------------------------------------------
@@ -404,7 +425,7 @@ if(EUI_ENABLE_INSTALL)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
-    set(EUI_NEO_INSTALL_DEP_TARGETS freetype png_static eui_zlib harfbuzz eui_md4c SDL2-static)
+    set(EUI_NEO_INSTALL_DEP_TARGETS freetype png_static eui_zlib eui_md4c SDL2-static)
     if(EUI_OWNS_GLAD_TARGET)
         list(APPEND EUI_NEO_INSTALL_DEP_TARGETS glad)
     endif()
@@ -454,12 +475,6 @@ if(EUI_ENABLE_INSTALL)
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libpng16
         )
     endif()
-    if(TARGET harfbuzz)
-        install(DIRECTORY "${EUI_HARFBUZZ_DIR}/src/"
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/harfbuzz
-            FILES_MATCHING PATTERN "*.h" PATTERN "*.hh"
-        )
-    endif()
     install(FILES
         3rd/stb_image.h
         3rd/nanosvg.h
@@ -478,7 +493,7 @@ if(EUI_ENABLE_INSTALL)
     install(FILES
         "${EUI_ZLIB_DIR}/zconf.h"
         "${EUI_ZLIB_DIR}/zlib.h"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/eui-neo/3rd/zlib-1.3.1
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/eui-neo/3rd/zlib
     )
     if(TARGET eui_md4c)
         install(FILES "${EUI_MD4C_DIR}/src/md4c.h"
@@ -501,7 +516,6 @@ set(EUI_NEO_WINDOW_BACKEND "@EUI_WINDOW_BACKEND@")
 set(EUI_NEO_RENDER_BACKEND "@EUI_RESOLVED_RENDER_BACKEND@")
 set(EUI_NEO_BUILD_SHARED @EUI_BUILD_SHARED@)
 set(EUI_NEO_DEPS_MODE "@EUI_DEPS_MODE@")
-set(EUI_NEO_ENABLE_HARFBUZZ @EUI_ENABLE_HARFBUZZ@)
 set(EUI_NEO_ENABLE_MARKDOWN @EUI_ENABLE_MARKDOWN@)
 
 find_dependency(Threads)
