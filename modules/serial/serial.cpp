@@ -183,7 +183,7 @@ OpenResult SerialPort::open(const char* device, unsigned int bauds,
 #endif
 #if defined(__linux__) || defined(__APPLE__)
     // Open device
-    fd_ = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
+    fd_ = ::open(device, O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd_ == -1)
         return {false, OpenError::OpenFailed};
 
