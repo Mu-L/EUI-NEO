@@ -188,7 +188,7 @@ ui.loader("counter.loader")
 
 focus 命中也遵守同样的 topmost 顺序。鼠标按下时，如果最上层命中的是 focusable 元素，就聚焦它；如果最上层命中的是非 focusable 的 interactive 元素，例如 sidebar scrim、modal panel 背景或透明 hit rect，Runtime 会停止向下查找并清空焦点，避免点击穿透到底层输入框。
 
-底层 DSL 的 `onPress/onRelease/onMove/onDrag/onScroll` 回调直接使用 Runtime 原始事件。`onMove` 只在元素是当前 topmost hover 目标且指针移动或刚进入 hover 时派发，适合确实需要回调改业务状态或组件私有视觉状态的场景。纯视觉、高频 pointer-follow transform 应优先用 Runtime binding，例如 `.runtimePointerTransformFrom(...)` / `.runtimePointerTiltFrom(...)`，避免每次 mouse move 触发组件状态写入和 compose。页面或组件需要 tap、拖拽阈值、滚轮步进、局部坐标、进入/离开 hover 时，优先用组件层的 `components::mouseArea(ui, id)`。
+底层 DSL 的 `onPress/onRelease/onMove/onDrag/onScroll` 回调直接使用 Runtime 原始事件。`onMove` 只在元素是当前 topmost hover 目标且指针移动或刚进入 hover 时派发，适合确实需要回调改业务状态或组件私有视觉状态的场景。纯视觉、高频 pointer-follow transform 应优先用 Runtime binding，例如 `.runtimePointerTransformFrom(...)` / `.runtimePointerTiltFrom(...)`，避免每次 mouse move 触发组件状态写入和 compose。普通按钮或菜单项等简单点击直接绑定可视图元；页面或组件需要 tap、拖拽阈值、滚轮步进、局部坐标、进入/离开 hover 时，再使用组件层的 `components::mouseArea(ui, id)`。
 
 示例：
 
@@ -604,7 +604,7 @@ components::button(ui, "save")
 - `components::scrollView` 是推荐的普通滚动区域；超长固定行高数据使用 `components::virtualList`，避免一次性 compose 全部行。底层 `components::scroll` 只负责滚动条，需要和内容容器绑定同一个 Runtime scroll state。
 - 已有基础键盘 focus / text input / 选择 / 剪贴板 / 撤销 / 重做 / IME 预编辑组合串和系统候选窗口定位。
 - 还没有事件冒泡。
-- 已有 click / press / release / pointer move / hover / context menu / text input / scroll / drag 回调；更顺手的手势开发优先用 `components::mouseArea`。
+- 已有 click / press / release / pointer move / hover / context menu / text input / scroll / drag 回调；局部坐标或组合手势开发使用 `components::mouseArea`，简单点击直接绑定可视图元。
 - 默认 hit-test 按布局矩形计算；开启 `.transformedHitTest()` 后会按元素当前 transform 和父容器继承矩阵反投影命中。
 - 脏区渲染是保守矩形，复杂重叠场景可能扩大重绘区域。Runtime 可以只重绘脏区，Vulkan 可以按 dirty rect 同步 render cache；最终 present 是否也是脏区提交取决于平台窗口系统、图形 API 和驱动能力。
 - 当前优化是 Runtime 级遍历、framebuffer cache、dirty rect 和自动 retained layer cache 的组合；OpenGL/Vulkan 后端都提供 retained layer 资源。它不是完整 retained scene graph，复杂 blur、动态 image/svg、交互和动画子树仍会走普通 dirty repaint。

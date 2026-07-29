@@ -496,6 +496,17 @@ public:
         return self();
     }
 
+    // Participate in hit testing without implying an action or hand cursor.
+    // Use for transparent modal/popup surfaces that intentionally block input
+    // from reaching the content behind them.
+    Derived& blockPointer(bool value = true) {
+        element_->interactive = value;
+        if (value) {
+            element_->cursor = CursorShape::Arrow;
+        }
+        return self();
+    }
+
     Derived& focusable(bool value = true) {
         element_->focusable = value;
         element_->interactive = value || element_->interactive;
