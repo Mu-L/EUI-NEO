@@ -89,6 +89,29 @@ struct FontInfoHolder {
     std::vector<std::string> lazyFallbackPaths;
 };
 
+constexpr std::size_t kFontStackCacheCapacity = 16;
+
+struct FontStackCacheEntry {
+    std::shared_ptr<FontInfoHolder> holder;
+    std::uint64_t lastUsed = 0;
+};
+
+struct FontStackCache {
+    std::unordered_map<std::string, FontStackCacheEntry> entries;
+    std::uint64_t accessTick = 0;
+};
+
+FontStackCache& sharedFontStackCache() {
+    static FontStackCache cache;
+    return cache;
+}
+
+void clearSharedFontStackCache() {
+    FontStackCache& cache = sharedFontStackCache();
+    cache.entries.clear();
+    cache.accessTick = 0;
+}
+
 struct AtlasPage {
     int width = 0;
     int height = 0;
@@ -511,11 +534,12 @@ std::string fontStackCacheKey(const std::string& fontPath, float fontSize) {
 }
 
 std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath, float fontSize) {
-    static std::unordered_map<std::string, std::weak_ptr<FontInfoHolder>> cache;
-
     const std::string cacheKey = fontStackCacheKey(fontPath, fontSize);
-    if (auto cached = cache[cacheKey].lock()) {
-        return cached;
+    FontStackCache& cache = sharedFontStackCache();
+    const auto existing = cache.entries.find(cacheKey);
+    if (existing != cache.entries.end()) {
+        existing->second.lastUsed = ++cache.accessTick;
+        return existing->second.holder;
     }
 
     auto holder = std::make_shared<FontInfoHolder>();
@@ -575,8 +599,18 @@ std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath,
     addLazyFallback("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
 #endif
 
-    cache[cacheKey] = holder;
-    return holder;
+    if (cache.entries.size() >= kFontStackCacheCapacity) {
+        const auto oldest = std::min_element(cache.entries.begin(), cache.entries.end(),
+                                             [](const auto& left, const auto& right) {
+                                                 return left.second.lastUsed < right.second.lastUsed;
+                                             });
+        if (oldest != cache.entries.end()) {
+            cache.entries.erase(oldest);
+        }
+    }
+
+    const auto inserted = cache.entries.emplace(cacheKey, FontStackCacheEntry{holder, ++cache.accessTick});
+    return inserted.first->second.holder;
 }
 
 bool isCombiningMark(unsigned int codepoint) {
@@ -1193,8 +1227,13 @@ TextPrimitive::TextMetrics TextPrimitive::Impl::measureTextMetrics(const std::st
 }
 
 void TextPrimitive::Impl::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
+    if (defaultUiFontFileOverride() == textFontFile &&
+        defaultIconFontFileOverride() == iconFontFile) {
+        return;
+    }
     defaultUiFontFileOverride() = textFontFile;
     defaultIconFontFileOverride() = iconFontFile;
+    clearSharedFontStackCache();
 }
 
 void TextPrimitive::Impl::prepare() {
