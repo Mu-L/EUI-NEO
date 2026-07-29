@@ -17,7 +17,6 @@ namespace {
 constexpr eui::Color kTransparent{0.0f, 0.0f, 0.0f, 0.0f};
 
 int selectedPage = 0;
-bool optionDense = false;
 bool optionGlass = false;
 bool optionMotion = true;
 bool optionUnlockFps = false;
@@ -316,7 +315,7 @@ void composeContent(eui::Ui& ui, float width, float height) {
     const float innerWidth = std::max(0.0f, shellWidth - contentInset * 2.0f);
     const float shellHeight = std::max(0.0f, height - shellMargin * 2.0f);
     const float innerHeight = std::max(0.0f, shellHeight - contentInset * 2.0f);
-    const float headerGap = optionDense ? 18.0f : 26.0f;
+    const float headerGap = 26.0f;
     const float bodyHeight = std::max(0.0f, innerHeight - 46.0f - 30.0f - headerGap * 2.0f);
     const int page = std::clamp(selectedPage, 0, 6);
 
@@ -392,7 +391,7 @@ void composeContent(eui::Ui& ui, float width, float height) {
                         .content([&] {
                             const std::string scrollId = "page.body.scrollview." + std::to_string(page);
                             const std::string scrollContentKey = page == 1
-                                ? std::string("style.") + (optionNight ? "dark" : "light") + "." + (optionDense ? "dense" : "regular")
+                                ? std::string("style.") + (optionNight ? "dark" : "light")
                                 : "";
                             components::scrollView(ui, scrollId)
                                 .theme(themeColors())

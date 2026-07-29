@@ -752,33 +752,25 @@ std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder
 std::vector<TextPrimitive::ShapedGlyph> shapeTextWithFontStack(FontInfoHolder& holder,
                                                                const std::string& text,
                                                                float fontSize) {
-    std::vector<TextPrimitive::ShapedGlyph> shaped = shapeWithFallback(holder, text, fontSize);
-    for (TextPrimitive::ShapedGlyph& glyph : shaped) {
-        int nextStart = static_cast<int>(text.size());
-        for (const TextPrimitive::ShapedGlyph& candidate : shaped) {
-            if (candidate.byteStart > glyph.byteStart && candidate.byteStart < nextStart) {
-                nextStart = candidate.byteStart;
-            }
-        }
-        glyph.byteEnd = std::max(glyph.byteEnd, nextStart);
-    }
-    return shaped;
+    // shapeWithFallback already advances UTF-8 one codepoint at a time, so a
+    // glyph's byteEnd is the next glyph's byteStart.  Avoid rescanning every
+    // glyph to rediscover that boundary; long editable text is measured often.
+    return shapeWithFallback(holder, text, fontSize);
 }
 
 TextPrimitive::TextMetrics makeTextMetrics(const std::string& text,
                                            const std::vector<TextPrimitive::ShapedGlyph>& shaped) {
     TextPrimitive::TextMetrics metrics;
+    metrics.byteIndices.reserve(shaped.size() + 1);
+    metrics.caretX.reserve(shaped.size() + 1);
     auto addStop = [&](int byteIndex, float x) {
         byteIndex = std::clamp(byteIndex, 0, static_cast<int>(text.size()));
-        const auto it = std::lower_bound(metrics.byteIndices.begin(), metrics.byteIndices.end(), byteIndex);
-        if (it != metrics.byteIndices.end() && *it == byteIndex) {
-            const size_t slot = static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
-            metrics.caretX[slot] = x;
+        if (!metrics.byteIndices.empty() && metrics.byteIndices.back() == byteIndex) {
+            metrics.caretX.back() = x;
             return;
         }
-        const size_t slot = static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
-        metrics.byteIndices.insert(it, byteIndex);
-        metrics.caretX.insert(metrics.caretX.begin() + static_cast<std::ptrdiff_t>(slot), x);
+        metrics.byteIndices.push_back(byteIndex);
+        metrics.caretX.push_back(x);
     };
 
     addStop(0, 0.0f);
