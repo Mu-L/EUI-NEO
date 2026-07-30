@@ -186,6 +186,7 @@ public:
                 if (allowMultiline && layout.maxVerticalScroll > 0.0f) {
                     hit.onScroll([&state, layout, fontSize](const core::ScrollEvent& event) {
                         const float step = std::max(12.0f, fontSize * 2.2f);
+                        state.followCaret = false;
                         state.verticalScroll = std::clamp(
                             state.verticalScroll - static_cast<float>(event.y) * step,
                             0.0f,
@@ -193,6 +194,7 @@ public:
                     });
                 }
                 hit.onTextInput([&state, allowMultiline, onChange, onEnter, width, inset, fontSize, fontFamily, textHeight](const core::KeyboardEvent& event) {
+                        state.followCaret = true;
                         bool changed = false;
                         const std::string nextComposition = event.composing ? InputModel::filteredText(event.compositionText, allowMultiline) : std::string{};
                         if (state.compositionText != nextComposition) {
