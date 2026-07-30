@@ -1,3 +1,14 @@
+#include "components/button.h"
+#include "components/checkbox.h"
+#include "components/dropdown.h"
+#include "components/input.h"
+#include "components/progress.h"
+#include "components/radio.h"
+#include "components/segmented.h"
+#include "components/slider.h"
+#include "components/stepper.h"
+#include "components/switch.h"
+#include "components/tabs.h"
 #include "core/dsl_runtime.h"
 
 #include <cmath>
@@ -127,6 +138,46 @@ bool textSizeMeasurementMatchesLineLayout() {
     return true;
 }
 
+bool componentDefaultsMatchGallery() {
+    core::dsl::Ui ui;
+    ui.begin("component.defaults");
+    components::button(ui, "button").build();
+    components::input(ui, "input").build();
+    components::dropdown(ui, "dropdown").build();
+    components::checkbox(ui, "checkbox").build();
+    components::radio(ui, "radio").build();
+    components::toggleSwitch(ui, "switch").build();
+    components::progress(ui, "progress").build();
+    components::slider(ui, "slider").build();
+    components::segmented(ui, "segmented").items({"A", "B"}).build();
+    components::tabs(ui, "tabs").items({"A", "B"}).build();
+    components::stepper(ui, "stepper").build();
+    ui.end();
+    ui.layout(1000.0f, 800.0f);
+
+    const std::pair<const char*, float> expected[] = {
+        {"button", 54.0f},
+        {"input", 44.0f},
+        {"dropdown.field", 44.0f},
+        {"checkbox", 30.0f},
+        {"radio", 30.0f},
+        {"switch", 32.0f},
+        {"progress", 14.0f},
+        {"slider", 32.0f},
+        {"segmented", 38.0f},
+        {"tabs", 42.0f},
+        {"stepper", 40.0f},
+    };
+    for (const auto& entry : expected) {
+        const core::dsl::Element* element = ui.find(entry.first);
+        if (element == nullptr || !closeEnough(element->frame.height, entry.second)) {
+            std::cerr << entry.first << " default height did not match gallery\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -158,5 +209,6 @@ int main() {
     ok = blockPointerUsesArrowCursor() && ok;
     ok = textWrapContentUsesIntrinsicSize() && ok;
     ok = textSizeMeasurementMatchesLineLayout() && ok;
+    ok = componentDefaultsMatchGallery() && ok;
     return ok ? 0 : 1;
 }

@@ -447,7 +447,7 @@ private:
     std::string placeholder_ = "Hello EUI-NEO 😉";
     bool multiline_ = false;
     float width_ = 260.0f;
-    float height_ = 40.0f;
+    float height_ = 44.0f;
     float x_ = 0.0f;
     float y_ = 0.0f;
     float inset_ = -1.0f;

@@ -207,7 +207,7 @@ private:
     std::string text_;
     bool checked_ = false;
     float width_ = 180.0f;
-    float height_ = 28.0f;
+    float height_ = 30.0f;
     float boxSize_ = 0.0f;
     float gap_ = 0.0f;
     float fontSize_ = 0.0f;
