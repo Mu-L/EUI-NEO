@@ -42,6 +42,7 @@ public:
     static bool hasSourceFailed(const std::string& source);
     static bool retrySource(const std::string& source);
     static bool consumeRemoteImageReady();
+    static void beginRenderFrame();
     static void releaseCachedTextures();
 
 private:

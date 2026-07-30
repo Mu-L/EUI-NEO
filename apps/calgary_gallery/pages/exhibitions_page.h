@@ -4,32 +4,17 @@
 
 namespace app::gallery {
 
-inline void exhibitionFilter(eui::Ui& ui, int index, const char* label,
-                             float x, float y, float width) {
-    const std::string id = "exhibitions.filter." + std::to_string(index);
-    const bool active = state.exhibitionFilter == index;
-    ui.stack(id).position(x, y).size(width, 42.0f).content([&] {
-        ui.text(id + ".label").size(width, 42.0f).text(label)
-            .fontSize(12.0f).lineHeight(17.0f).fontWeight(760)
-            .color(active ? kAccent : kInk).horizontalAlign(eui::HorizontalAlign::Center)
-            .verticalAlign(eui::VerticalAlign::Center).transition(quickMotion()).build();
-        components::mouseArea(ui, id + ".hit").size(width, 42.0f).onTap([index] {
-            if (!state.feed.loading && state.exhibitionFilter != index) {
-                state.exhibitionFilter = index;
-                resetUnsplashFeed();
-            }
-        }).build();
-    }).build();
-}
+inline constexpr float kCardCaptionHeight = 112.0f;
 
 inline float localFallbackHeight(int index, float width) {
     constexpr std::array<float, 7> ratios{{1.27f, 0.78f, 1.50f, 1.31f, 0.76f, 0.80f, 0.78f}};
-    return width * ratios[static_cast<std::size_t>(index % static_cast<int>(ratios.size()))] + 64.0f;
+    return width * ratios[static_cast<std::size_t>(index % static_cast<int>(ratios.size()))] +
+           kCardCaptionHeight;
 }
 
 inline void unsplashCard(eui::Ui& ui, const std::string& id, int index, float width, float height) {
     const UnsplashPhoto& photo = state.feed.photos[static_cast<std::size_t>(index)];
-    const float imageHeight = std::max(1.0f, height - 64.0f);
+    const float imageHeight = std::max(1.0f, height - kCardCaptionHeight);
     const std::string source = resizedUnsplashUrl(photo, width);
     const bool ready = eui::image::isSourceReady(source);
     const bool failed = eui::image::hasSourceFailed(source);
@@ -51,32 +36,44 @@ inline void unsplashCard(eui::Ui& ui, const std::string& id, int index, float wi
                 eui::image::retrySource(source);
             }).build();
     }
-    ui.text(id + ".title").position(0.0f, imageHeight + 10.0f)
-        .size(width, 22.0f).text(photo.title).fontFamily("Georgia").fontSize(16.0f)
-        .lineHeight(20.0f).fontWeight(520).color(kInk).build();
+    ui.stack(id + ".title.clip").position(0.0f, imageHeight + 10.0f)
+        .size(width, 58.0f).clip().content([&] {
+            ui.text(id + ".title").size(width, 58.0f).maxWidth(width).wrap(true)
+                .text(photo.title).fontFamily("Georgia").fontSize(16.0f)
+                .lineHeight(20.0f).fontWeight(520).color(kInk).build();
+        }).build();
     const std::string photographer = photo.photographer.empty() ? "Unsplash" : photo.photographer;
-    ui.text(id + ".credit").position(0.0f, imageHeight + 34.0f).size(width, 20.0f)
-        .text("Photo by " + photographer + " on Unsplash").fontSize(11.0f).lineHeight(16.0f)
-        .fontWeight(650).color(kMuted).build();
+    ui.stack(id + ".credit.clip").position(0.0f, imageHeight + 72.0f)
+        .size(width, 32.0f).clip().content([&] {
+            ui.text(id + ".credit").size(width, 32.0f).maxWidth(width).wrap(true)
+                .text("Photo by " + photographer + " on Unsplash")
+                .fontSize(11.0f).lineHeight(16.0f).fontWeight(650).color(kMuted).build();
+        }).build();
     if (!photo.photographerUrl.empty()) {
-        components::mouseArea(ui, id + ".credit.hit").position(0.0f, imageHeight + 30.0f)
-            .size(width, 28.0f).onTap([url = photo.photographerUrl] { eui::platform::openUrl(url); }).build();
+        components::mouseArea(ui, id + ".credit.hit").position(0.0f, imageHeight + 68.0f)
+            .size(width, 40.0f).onTap([url = photo.photographerUrl] { eui::platform::openUrl(url); }).build();
     }
 }
 
 inline void fallbackCard(eui::Ui& ui, const std::string& id, int index, float width, float height) {
     const Artwork& artwork = kArtworks[static_cast<std::size_t>(index)];
-    const float imageHeight = std::max(1.0f, height - 64.0f);
+    const float imageHeight = std::max(1.0f, height - kCardCaptionHeight);
     ui.rect(id + ".skeleton").size(width, imageHeight).color({0.87f, 0.85f, 0.80f, 1.0f}).build();
     ui.image(id + ".image").size(width, imageHeight).source(artwork.image).cover().build();
     components::mouseArea(ui, id + ".image.hit").size(width, imageHeight)
         .onTap([index] { openArtwork(index); }).build();
-    ui.text(id + ".title").position(0.0f, imageHeight + 10.0f).size(width, 22.0f)
-        .text(artwork.title).fontFamily("Georgia").fontSize(16.0f).lineHeight(20.0f)
-        .fontWeight(520).color(kInk).build();
-    ui.text(id + ".credit").position(0.0f, imageHeight + 34.0f).size(width, 20.0f)
-        .text(std::string(artwork.artist) + "  /  " + artwork.year).fontSize(11.0f)
-        .lineHeight(16.0f).fontWeight(650).color(kMuted).build();
+    ui.stack(id + ".title.clip").position(0.0f, imageHeight + 10.0f)
+        .size(width, 58.0f).clip().content([&] {
+            ui.text(id + ".title").size(width, 58.0f).maxWidth(width).wrap(true)
+                .text(artwork.title).fontFamily("Georgia").fontSize(16.0f).lineHeight(20.0f)
+                .fontWeight(520).color(kInk).build();
+        }).build();
+    ui.stack(id + ".credit.clip").position(0.0f, imageHeight + 72.0f)
+        .size(width, 32.0f).clip().content([&] {
+            ui.text(id + ".credit").size(width, 32.0f).maxWidth(width).wrap(true)
+                .text(std::string(artwork.artist) + "  /  " + artwork.year).fontSize(11.0f)
+                .lineHeight(16.0f).fontWeight(650).color(kMuted).build();
+        }).build();
 }
 
 inline void feedStatus(eui::Ui& ui, float width, float height, int columns) {
@@ -114,7 +111,7 @@ inline void composeExhibitionsPage(eui::Ui& ui, float width, float height) {
     const float contentWidth = std::min(1240.0f, std::max(280.0f, width - pad * 2.0f));
     const float originX = std::max(pad, (width - contentWidth) * 0.5f);
     const bool compact = contentWidth < 720.0f;
-    const float gridTop = compact ? 220.0f : 166.0f;
+    const float gridTop = 132.0f;
     const float gridHeight = std::max(120.0f, height - gridTop - 18.0f);
     const int columns = masonryColumns(contentWidth);
     if (state.feed.photos.empty() && !state.feed.loading && !state.feed.failed && !state.feed.exhausted) {
@@ -130,17 +127,6 @@ inline void composeExhibitionsPage(eui::Ui& ui, float width, float height) {
                      "A continuously changing field of images. Only the visible works remain in graphics memory.",
                      originX + contentWidth * 0.56f, 48.0f, contentWidth * 0.44f, 64.0f, 14.0f, kInk);
         }
-        const float filterY = compact ? 148.0f : 112.0f;
-        const float filterWidth = std::min(390.0f, contentWidth);
-        const float filterItemWidth = filterWidth / 3.0f;
-        exhibitionFilter(ui, 0, "LATEST", originX, filterY, filterItemWidth);
-        exhibitionFilter(ui, 1, "POPULAR", originX + filterItemWidth, filterY, filterItemWidth);
-        exhibitionFilter(ui, 2, "ARCHIVE", originX + filterItemWidth * 2.0f, filterY, filterItemWidth);
-        ui.rect("exhibitions.filter.active")
-            .position(originX + filterItemWidth * static_cast<float>(state.exhibitionFilter), filterY + 40.0f)
-            .size(filterItemWidth, 2.0f).color(kAccent).transition(pageMotion())
-            .animate(eui::AnimProperty::Frame).build();
-
         const bool remote = !state.feed.photos.empty();
         const std::int64_t count = remote ? static_cast<std::int64_t>(state.feed.photos.size())
                                           : static_cast<std::int64_t>(kArtworks.size());
@@ -156,7 +142,7 @@ inline void composeExhibitionsPage(eui::Ui& ui, float width, float height) {
                 }
                 const UnsplashPhoto& photo = state.feed.photos[static_cast<std::size_t>(index)];
                 const float ratio = std::clamp(static_cast<float>(photo.height) / static_cast<float>(photo.width), 0.72f, 1.62f);
-                return itemWidth * ratio + 64.0f;
+                return itemWidth * ratio + kCardCaptionHeight;
             })
             .onEndReached([columns] { requestUnsplashBatch(columns); })
             .item([remote](eui::Ui& itemUi, const std::string& id, std::int64_t index,

@@ -90,6 +90,7 @@ struct FontInfoHolder {
 };
 
 constexpr std::size_t kFontStackCacheCapacity = 16;
+constexpr std::size_t kTextSizeCacheCapacity = 1024;
 
 struct FontStackCacheEntry {
     std::shared_ptr<FontInfoHolder> holder;
@@ -106,10 +107,65 @@ FontStackCache& sharedFontStackCache() {
     return cache;
 }
 
+struct TextSizeCacheKey {
+    std::string text;
+    std::string fontFamily;
+    float fontSize = 0.0f;
+    float maxWidth = 0.0f;
+    float lineHeight = 0.0f;
+    int fontWeight = 0;
+    bool wrap = false;
+
+    bool operator==(const TextSizeCacheKey& other) const {
+        return text == other.text &&
+               fontFamily == other.fontFamily &&
+               fontSize == other.fontSize &&
+               maxWidth == other.maxWidth &&
+               lineHeight == other.lineHeight &&
+               fontWeight == other.fontWeight &&
+               wrap == other.wrap;
+    }
+};
+
+struct TextSizeCacheKeyHash {
+    std::size_t operator()(const TextSizeCacheKey& key) const {
+        std::size_t value = std::hash<std::string>{}(key.text);
+        const auto combine = [&](std::size_t part) {
+            value ^= part + 0x9e3779b9u + (value << 6u) + (value >> 2u);
+        };
+        combine(std::hash<std::string>{}(key.fontFamily));
+        combine(std::hash<float>{}(key.fontSize));
+        combine(std::hash<float>{}(key.maxWidth));
+        combine(std::hash<float>{}(key.lineHeight));
+        combine(std::hash<int>{}(key.fontWeight));
+        combine(std::hash<bool>{}(key.wrap));
+        return value;
+    }
+};
+
+struct TextSizeCacheEntry {
+    Vec2 size;
+    std::uint64_t lastUsed = 0;
+};
+
+struct TextSizeCache {
+    std::unordered_map<TextSizeCacheKey, TextSizeCacheEntry, TextSizeCacheKeyHash> entries;
+    std::uint64_t accessTick = 0;
+};
+
+TextSizeCache& sharedTextSizeCache() {
+    static TextSizeCache cache;
+    return cache;
+}
+
 void clearSharedFontStackCache() {
     FontStackCache& cache = sharedFontStackCache();
     cache.entries.clear();
     cache.accessTick = 0;
+
+    TextSizeCache& sizeCache = sharedTextSizeCache();
+    sizeCache.entries.clear();
+    sizeCache.accessTick = 0;
 }
 
 struct AtlasPage {
@@ -1238,6 +1294,22 @@ TextPrimitive::TextMetrics TextPrimitive::Impl::measureTextMetrics(const std::st
 }
 
 Vec2 TextPrimitive::Impl::measureTextSize(const TextStyle& style) {
+    TextSizeCache& cache = sharedTextSizeCache();
+    TextSizeCacheKey cacheKey{
+        style.text,
+        style.fontFamily,
+        style.fontSize,
+        style.wrap ? style.maxWidth : 0.0f,
+        style.lineHeight,
+        style.fontWeight,
+        style.wrap
+    };
+    const auto cached = cache.entries.find(cacheKey);
+    if (cached != cache.entries.end()) {
+        cached->second.lastUsed = ++cache.accessTick;
+        return cached->second.size;
+    }
+
     const float lineHeight = style.lineHeight > 0.0f ? style.lineHeight : style.fontSize * 1.2f;
     const float maxWidth = style.wrap && style.maxWidth > 0.0f ? style.maxWidth : 0.0f;
     float measuredWidth = 0.0f;
@@ -1272,7 +1344,18 @@ Vec2 TextPrimitive::Impl::measureTextSize(const TextStyle& style) {
         paragraphStart = newline + 1;
     }
 
-    return {measuredWidth, static_cast<float>(lineCount) * lineHeight};
+    const Vec2 measuredSize{measuredWidth, static_cast<float>(lineCount) * lineHeight};
+    if (cache.entries.size() >= kTextSizeCacheCapacity) {
+        const auto oldest = std::min_element(cache.entries.begin(), cache.entries.end(),
+                                             [](const auto& left, const auto& right) {
+                                                 return left.second.lastUsed < right.second.lastUsed;
+                                             });
+        if (oldest != cache.entries.end()) {
+            cache.entries.erase(oldest);
+        }
+    }
+    cache.entries.emplace(std::move(cacheKey), TextSizeCacheEntry{measuredSize, ++cache.accessTick});
+    return measuredSize;
 }
 
 void TextPrimitive::Impl::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {

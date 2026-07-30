@@ -37,6 +37,7 @@
 #include <atomic>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -50,6 +51,15 @@ namespace {
 
 std::unordered_map<std::string, std::weak_ptr<const StaticImageData>> gStaticImageCache;
 std::unordered_map<std::string, std::weak_ptr<const GifFrameData>> gGifCache;
+std::unordered_map<std::string, std::uint64_t> gDecodedStaticImageKeys;
+struct RetainedStaticImage {
+    std::shared_ptr<const StaticImageData> image;
+    std::uint64_t lastUse = 0;
+};
+
+std::unordered_map<std::string, RetainedStaticImage> gRetainedStaticImageCache;
+std::size_t gRetainedStaticImageBytes = 0;
+std::uint64_t gStaticImageUseSerial = 0;
 struct ThemeColorCacheEntry {
     std::string imageVersionKey;
     core::Color color;
@@ -59,10 +69,21 @@ std::unordered_map<std::string, ThemeColorCacheEntry> gThemeColorCache;
 std::unordered_map<std::string, std::string> gDownloadedPathCache;
 std::unordered_map<std::string, bool> gDownloadInFlight;
 std::unordered_map<std::string, bool> gDownloadFailed;
+struct RemoteFileMetadata {
+    std::string versionSuffix;
+    bool versionKnown = false;
+    bool gif = false;
+    bool gifKnown = false;
+};
+
+std::unordered_map<std::string, RemoteFileMetadata> gRemoteFileMetadata;
 std::mutex gRemoteMutex;
 std::atomic<bool> gRemoteImageReady{false};
 
 constexpr std::size_t kMaxWeakImageCacheEntries = 512;
+constexpr std::size_t kMaxDecodedStaticImageEntries = 512;
+constexpr std::size_t kMaxRetainedStaticImageEntries = 64;
+constexpr std::size_t kMaxRetainedStaticImageBytes = 64u * 1024u * 1024u;
 constexpr std::size_t kMaxThemeColorCacheEntries = 512;
 constexpr std::size_t kMaxDownloadedPathEntries = 512;
 constexpr std::size_t kMaxFailedDownloadEntries = 256;
@@ -85,12 +106,99 @@ void pruneWeakCache(Cache& cache) {
     }
 }
 
+void markStaticImageDecoded(const std::string& cacheKey) {
+    gDecodedStaticImageKeys[cacheKey] = ++gStaticImageUseSerial;
+    while (gDecodedStaticImageKeys.size() > kMaxDecodedStaticImageEntries) {
+        auto oldest = gDecodedStaticImageKeys.end();
+        for (auto it = gDecodedStaticImageKeys.begin(); it != gDecodedStaticImageKeys.end(); ++it) {
+            if (oldest == gDecodedStaticImageKeys.end() || it->second < oldest->second) {
+                oldest = it;
+            }
+        }
+        if (oldest == gDecodedStaticImageKeys.end()) {
+            break;
+        }
+        gDecodedStaticImageKeys.erase(oldest);
+    }
+}
+
+bool wasStaticImageDecoded(const std::string& cacheKey) {
+    const auto decoded = gDecodedStaticImageKeys.find(cacheKey);
+    if (decoded == gDecodedStaticImageKeys.end()) {
+        return false;
+    }
+    decoded->second = ++gStaticImageUseSerial;
+    return true;
+}
+
+void retainStaticImage(const std::string& cacheKey,
+                       const std::shared_ptr<const StaticImageData>& image) {
+    if (cacheKey.empty() || !image) {
+        return;
+    }
+
+    const auto existing = gRetainedStaticImageCache.find(cacheKey);
+    if (existing != gRetainedStaticImageCache.end()) {
+        gRetainedStaticImageBytes -= existing->second.image->byteCount;
+    }
+    gRetainedStaticImageCache[cacheKey] = {image, ++gStaticImageUseSerial};
+    gRetainedStaticImageBytes += image->byteCount;
+
+    while (gRetainedStaticImageCache.size() > kMaxRetainedStaticImageEntries ||
+           gRetainedStaticImageBytes > kMaxRetainedStaticImageBytes) {
+        auto oldest = gRetainedStaticImageCache.end();
+        for (auto it = gRetainedStaticImageCache.begin(); it != gRetainedStaticImageCache.end(); ++it) {
+            if (oldest == gRetainedStaticImageCache.end() || it->second.lastUse < oldest->second.lastUse) {
+                oldest = it;
+            }
+        }
+        if (oldest == gRetainedStaticImageCache.end()) {
+            break;
+        }
+        gRetainedStaticImageBytes -= oldest->second.image->byteCount;
+        gRetainedStaticImageCache.erase(oldest);
+    }
+}
+
+std::shared_ptr<const StaticImageData> cachedStaticImage(const std::string& cacheKey) {
+    const auto cached = gStaticImageCache.find(cacheKey);
+    if (cached == gStaticImageCache.end()) {
+        return {};
+    }
+    if (auto image = cached->second.lock()) {
+        retainStaticImage(cacheKey, image);
+        return image;
+    }
+    gStaticImageCache.erase(cached);
+    return {};
+}
+
+void cacheStaticImage(const std::string& cacheKey,
+                      const std::shared_ptr<const StaticImageData>& image) {
+    if (cacheKey.empty() || !image) {
+        return;
+    }
+    gStaticImageCache[cacheKey] = image;
+    markStaticImageDecoded(cacheKey);
+    retainStaticImage(cacheKey, image);
+    pruneWeakCache(gStaticImageCache);
+}
+
 void pruneRemoteMetadataLocked() {
     while (gDownloadedPathCache.size() > kMaxDownloadedPathEntries) {
         gDownloadedPathCache.erase(gDownloadedPathCache.begin());
     }
     while (gDownloadFailed.size() > kMaxFailedDownloadEntries) {
         gDownloadFailed.erase(gDownloadFailed.begin());
+    }
+    while (gRemoteFileMetadata.size() > kMaxDownloadedPathEntries) {
+        gRemoteFileMetadata.erase(gRemoteFileMetadata.begin());
+    }
+}
+
+void rememberRemoteFileLocked(const std::string& path) {
+    if (!path.empty()) {
+        gRemoteFileMetadata.try_emplace(path);
     }
 }
 
@@ -266,6 +374,15 @@ std::string resolveRemoteImagePath(const std::string& url, bool* pending) {
         *pending = false;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(gRemoteMutex);
+        const auto cached = gDownloadedPathCache.find(url);
+        if (cached != gDownloadedPathCache.end()) {
+            rememberRemoteFileLocked(cached->second);
+            return cached->second;
+        }
+    }
+
     const std::string localPath = buildDownloadedImagePath(url);
     if (localPath.empty()) {
         return {};
@@ -274,11 +391,13 @@ std::string resolveRemoteImagePath(const std::string& url, bool* pending) {
     {
         std::lock_guard<std::mutex> lock(gRemoteMutex);
         const auto cached = gDownloadedPathCache.find(url);
-        if (cached != gDownloadedPathCache.end() && std::filesystem::exists(cached->second)) {
+        if (cached != gDownloadedPathCache.end()) {
+            rememberRemoteFileLocked(cached->second);
             return cached->second;
         }
         if (std::filesystem::exists(localPath)) {
             gDownloadedPathCache[url] = localPath;
+            rememberRemoteFileLocked(localPath);
             pruneRemoteMetadataLocked();
             return localPath;
         }
@@ -316,6 +435,7 @@ std::string resolveRemoteImagePath(const std::string& url, bool* pending) {
                 gDownloadInFlight.erase(url);
                 if (ok && std::filesystem::exists(localPath)) {
                     gDownloadedPathCache[url] = localPath;
+                    rememberRemoteFileLocked(localPath);
                     gDownloadFailed.erase(url);
                 } else {
                     gDownloadFailed[url] = true;
@@ -342,7 +462,8 @@ std::string resolveBingImagePath(const std::string& uri, bool* pending) {
     {
         std::lock_guard<std::mutex> lock(gRemoteMutex);
         const auto cached = gDownloadedPathCache.find(uri);
-        if (cached != gDownloadedPathCache.end() && std::filesystem::exists(cached->second)) {
+        if (cached != gDownloadedPathCache.end()) {
+            rememberRemoteFileLocked(cached->second);
             return cached->second;
         }
         const auto failed = gDownloadFailed.find(uri);
@@ -400,6 +521,7 @@ std::string resolveBingImagePath(const std::string& uri, bool* pending) {
                 if (ok && std::filesystem::exists(localPath)) {
                     gDownloadedPathCache[uri] = localPath;
                     gDownloadedPathCache[imageUrl] = localPath;
+                    rememberRemoteFileLocked(localPath);
                     gDownloadFailed.erase(uri);
                 } else {
                     gDownloadFailed[uri] = true;
@@ -602,89 +724,56 @@ std::string imageFileVersionSuffix(const std::string& resolvedPath) {
     return "#size=" + std::to_string(size) +
            "#mtime=" + std::to_string(modifiedTicks);
 }
-} // namespace
 
-std::string imageCacheKey(const std::string& resolvedPath, bool flipVertically) {
-    return baseImageCacheKey(resolvedPath, flipVertically) + imageFileVersionSuffix(resolvedPath);
-}
-
-std::string resolveImagePath(const std::string& source, bool* pending) {
-    if (isBingDailyScheme(source)) {
-        return resolveBingImagePath(source, pending);
-    }
-    if (network::isHttpUrl(source)) {
-        return resolveRemoteImagePath(source, pending);
-    }
-    if (pending != nullptr) {
-        *pending = false;
-    }
-    return resolveLocalImagePath(source);
-}
-
-bool isGifPath(const std::string& path) {
-    return hasGifExtension(path) || looksLikeGifFile(path);
-}
-
-bool isSourceReady(const std::string& source) {
-    bool pending = false;
-    return !resolveImagePath(source, &pending).empty() && !pending;
-}
-
-bool hasSourceFailed(const std::string& source) {
-    if (!network::isHttpUrl(source) && !isBingDailyScheme(source)) {
-        return false;
-    }
-    std::lock_guard<std::mutex> lock(gRemoteMutex);
-    const auto failed = gDownloadFailed.find(source);
-    return failed != gDownloadFailed.end() && failed->second;
-}
-
-bool retrySource(const std::string& source) {
-    if (!network::isHttpUrl(source) && !isBingDailyScheme(source)) {
-        return false;
-    }
+bool tryRemoteFileVersionSuffix(const std::string& resolvedPath, std::string& suffix) {
     {
         std::lock_guard<std::mutex> lock(gRemoteMutex);
-        if (gDownloadInFlight.find(source) != gDownloadInFlight.end()) {
+        const auto metadata = gRemoteFileMetadata.find(resolvedPath);
+        if (metadata == gRemoteFileMetadata.end()) {
             return false;
         }
-        const auto failed = gDownloadFailed.find(source);
-        if (failed == gDownloadFailed.end() || !failed->second) {
-            return false;
+        if (metadata->second.versionKnown) {
+            suffix = metadata->second.versionSuffix;
+            return true;
         }
-        gDownloadFailed.erase(failed);
     }
-    gRemoteImageReady.store(true);
-    platform::requestUiUpdate();
+
+    suffix = imageFileVersionSuffix(resolvedPath);
+    std::lock_guard<std::mutex> lock(gRemoteMutex);
+    const auto metadata = gRemoteFileMetadata.find(resolvedPath);
+    if (metadata != gRemoteFileMetadata.end()) {
+        metadata->second.versionSuffix = suffix;
+        metadata->second.versionKnown = true;
+    }
     return true;
 }
 
-bool consumeRemoteImageReady() {
-    return gRemoteImageReady.exchange(false);
+bool tryCachedRemoteGif(const std::string& resolvedPath, bool& gif) {
+    std::lock_guard<std::mutex> lock(gRemoteMutex);
+    const auto metadata = gRemoteFileMetadata.find(resolvedPath);
+    if (metadata == gRemoteFileMetadata.end() || !metadata->second.gifKnown) {
+        return false;
+    }
+    gif = metadata->second.gif;
+    return true;
 }
 
-std::shared_ptr<const StaticImageData> loadStaticImage(const std::string& source,
-                                                       bool flipVertically,
-                                                       bool* pending) {
-    const std::string resolvedPath = resolveImagePath(source, pending);
-    return loadStaticImageFromPath(resolvedPath, flipVertically);
+void cacheRemoteGif(const std::string& resolvedPath, bool gif) {
+    std::lock_guard<std::mutex> lock(gRemoteMutex);
+    const auto metadata = gRemoteFileMetadata.find(resolvedPath);
+    if (metadata == gRemoteFileMetadata.end()) {
+        return;
+    }
+    metadata->second.gif = gif;
+    metadata->second.gifKnown = true;
 }
 
-std::shared_ptr<const StaticImageData> loadStaticImageFromPath(const std::string& resolvedPath,
-                                                               bool flipVertically) {
-    if (resolvedPath.empty()) {
-        return {};
-    }
+std::string staticDecodeTaskKey(const std::string& cacheKey) {
+    return "image.decode." + cacheKey;
+}
 
-    const std::string cacheKey = imageCacheKey(resolvedPath, flipVertically);
-    const auto cached = gStaticImageCache.find(cacheKey);
-    if (cached != gStaticImageCache.end()) {
-        if (auto image = cached->second.lock()) {
-            return image;
-        }
-        gStaticImageCache.erase(cached);
-    }
-
+std::shared_ptr<const StaticImageData> decodeStaticImageFromPath(const std::string& resolvedPath,
+                                                                 bool flipVertically) {
     int width = 0;
     int height = 0;
     int channels = 0;
@@ -693,7 +782,8 @@ std::shared_ptr<const StaticImageData> loadStaticImageFromPath(const std::string
 
     if (hasSvgExtension(resolvedPath) || looksLikeSvgFile(resolvedPath)) {
         constexpr int kSvgRasterSize = 512;
-        if (!rasterizeSvgFile(resolvedPath, kSvgRasterSize, kSvgRasterSize, flipVertically, svgPixels, width, height)) {
+        if (!rasterizeSvgFile(resolvedPath, kSvgRasterSize, kSvgRasterSize,
+                              flipVertically, svgPixels, width, height)) {
             return {};
         }
         pixels = svgPixels.data();
@@ -720,9 +810,210 @@ std::shared_ptr<const StaticImageData> loadStaticImageFromPath(const std::string
         auto owner = std::make_shared<std::vector<unsigned char>>(std::move(svgPixels));
         image->pixels = std::shared_ptr<unsigned char>(owner, owner->data());
     }
-    gStaticImageCache[cacheKey] = image;
-    pruneWeakCache(gStaticImageCache);
     return image;
+}
+} // namespace
+
+std::string imageCacheKey(const std::string& resolvedPath, bool flipVertically) {
+    std::string versionSuffix;
+    if (!tryRemoteFileVersionSuffix(resolvedPath, versionSuffix)) {
+        versionSuffix = imageFileVersionSuffix(resolvedPath);
+    }
+    return baseImageCacheKey(resolvedPath, flipVertically) + versionSuffix;
+}
+
+std::string resolveImagePath(const std::string& source, bool* pending) {
+    if (isBingDailyScheme(source)) {
+        return resolveBingImagePath(source, pending);
+    }
+    if (network::isHttpUrl(source)) {
+        return resolveRemoteImagePath(source, pending);
+    }
+    if (pending != nullptr) {
+        *pending = false;
+    }
+    return resolveLocalImagePath(source);
+}
+
+bool isRemoteSource(const std::string& source) {
+    return network::isHttpUrl(source) || isBingDailyScheme(source);
+}
+
+bool isGifPath(const std::string& path) {
+    bool gif = false;
+    if (tryCachedRemoteGif(path, gif)) {
+        return gif;
+    }
+    gif = hasGifExtension(path) || looksLikeGifFile(path);
+    cacheRemoteGif(path, gif);
+    return gif;
+}
+
+bool isSourceReady(const std::string& source) {
+    bool pending = false;
+    const std::string resolvedPath = resolveImagePath(source, &pending);
+    if (resolvedPath.empty() || pending) {
+        return false;
+    }
+    if (!isRemoteSource(source) || isGifPath(resolvedPath)) {
+        return true;
+    }
+
+    const std::string cacheKey = imageCacheKey(resolvedPath, false);
+    if (wasStaticImageDecoded(cacheKey)) {
+        return true;
+    }
+    bool decodePending = false;
+    return requestStaticImageFromPath(resolvedPath, false, &decodePending) != nullptr;
+}
+
+bool hasSourceFailed(const std::string& source) {
+    if (!isRemoteSource(source)) {
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(gRemoteMutex);
+        const auto failed = gDownloadFailed.find(source);
+        if (failed != gDownloadFailed.end() && failed->second) {
+            return true;
+        }
+    }
+
+    bool pending = false;
+    const std::string resolvedPath = resolveImagePath(source, &pending);
+    if (resolvedPath.empty() || pending || isGifPath(resolvedPath)) {
+        return false;
+    }
+    const std::string cacheKey = imageCacheKey(resolvedPath, false);
+    if (wasStaticImageDecoded(cacheKey)) {
+        return false;
+    }
+    return async::status(staticDecodeTaskKey(cacheKey)) == async::Status::Failed;
+}
+
+bool retrySource(const std::string& source) {
+    if (!isRemoteSource(source)) {
+        return false;
+    }
+    bool retryDownload = false;
+    {
+        std::lock_guard<std::mutex> lock(gRemoteMutex);
+        if (gDownloadInFlight.find(source) != gDownloadInFlight.end()) {
+            return false;
+        }
+        const auto failed = gDownloadFailed.find(source);
+        if (failed != gDownloadFailed.end() && failed->second) {
+            gDownloadFailed.erase(failed);
+            retryDownload = true;
+        }
+    }
+
+    if (!retryDownload) {
+        bool pending = false;
+        const std::string resolvedPath = resolveImagePath(source, &pending);
+        if (resolvedPath.empty() || pending || isGifPath(resolvedPath)) {
+            return false;
+        }
+        const std::string taskKey = staticDecodeTaskKey(imageCacheKey(resolvedPath, false));
+        if (async::status(taskKey) != async::Status::Failed || !async::forget(taskKey)) {
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(gRemoteMutex);
+            for (auto it = gDownloadedPathCache.begin(); it != gDownloadedPathCache.end();) {
+                if (it->second == resolvedPath) {
+                    it = gDownloadedPathCache.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            gRemoteFileMetadata.erase(resolvedPath);
+        }
+        std::remove(resolvedPath.c_str());
+    }
+    gRemoteImageReady.store(true);
+    platform::requestUiUpdate();
+    return true;
+}
+
+bool consumeRemoteImageReady() {
+    return gRemoteImageReady.exchange(false);
+}
+
+std::shared_ptr<const StaticImageData> loadStaticImage(const std::string& source,
+                                                       bool flipVertically,
+                                                       bool* pending) {
+    const std::string resolvedPath = resolveImagePath(source, pending);
+    return loadStaticImageFromPath(resolvedPath, flipVertically);
+}
+
+std::shared_ptr<const StaticImageData> loadStaticImageFromPath(const std::string& resolvedPath,
+                                                               bool flipVertically) {
+    if (resolvedPath.empty()) {
+        return {};
+    }
+
+    const std::string cacheKey = imageCacheKey(resolvedPath, flipVertically);
+    if (auto image = cachedStaticImage(cacheKey)) {
+        return image;
+    }
+
+    auto image = decodeStaticImageFromPath(resolvedPath, flipVertically);
+    if (image) {
+        cacheStaticImage(cacheKey, image);
+    }
+    return image;
+}
+
+std::shared_ptr<const StaticImageData> requestStaticImageFromPath(const std::string& resolvedPath,
+                                                                  bool flipVertically,
+                                                                  bool* pending) {
+    if (pending != nullptr) {
+        *pending = false;
+    }
+    if (resolvedPath.empty()) {
+        return {};
+    }
+
+    const std::string cacheKey = imageCacheKey(resolvedPath, flipVertically);
+    if (auto image = cachedStaticImage(cacheKey)) {
+        return image;
+    }
+
+    const std::string taskKey = staticDecodeTaskKey(cacheKey);
+    const async::Status status = async::status(taskKey);
+    if (status == async::Status::Running || status == async::Status::Done) {
+        if (pending != nullptr) {
+            *pending = true;
+        }
+        return {};
+    }
+    if (status == async::Status::Failed) {
+        return {};
+    }
+
+    const bool started = async::runOnce(
+        taskKey,
+        [resolvedPath, flipVertically]() -> async::Result<std::shared_ptr<const StaticImageData>> {
+            auto image = decodeStaticImageFromPath(resolvedPath, flipVertically);
+            if (!image) {
+                return async::failure<std::shared_ptr<const StaticImageData>>("Image decode failed");
+            }
+            return async::success(std::move(image));
+        },
+        [cacheKey, taskKey](const async::Result<std::shared_ptr<const StaticImageData>>& result) {
+            if (result.ok && result.value) {
+                cacheStaticImage(cacheKey, result.value);
+                async::forget(taskKey);
+            } else {
+                gDecodedStaticImageKeys.erase(cacheKey);
+            }
+            gRemoteImageReady.store(true);
+        });
+    if (pending != nullptr) {
+        *pending = started || async::running(taskKey);
+    }
+    return {};
 }
 
 static bool trySampleThemeColor(const StaticImageData& image, core::Color& color) {
@@ -829,12 +1120,8 @@ std::shared_ptr<const StaticImageData> loadStaticSvg(const std::string& cacheKey
     const std::string resolvedCacheKey = "svg-string:" + cacheKey + "#" +
                                          std::to_string(std::hash<std::string>{}(svg)) +
                                          (flipVertically ? "#flip" : "#noflip");
-    const auto cached = gStaticImageCache.find(resolvedCacheKey);
-    if (cached != gStaticImageCache.end()) {
-        if (auto image = cached->second.lock()) {
-            return image;
-        }
-        gStaticImageCache.erase(cached);
+    if (auto image = cachedStaticImage(resolvedCacheKey)) {
+        return image;
     }
 
     int width = 0;
@@ -851,8 +1138,7 @@ std::shared_ptr<const StaticImageData> loadStaticSvg(const std::string& cacheKey
     image->byteCount = pixels.size();
     auto owner = std::make_shared<std::vector<unsigned char>>(std::move(pixels));
     image->pixels = std::shared_ptr<unsigned char>(owner, owner->data());
-    gStaticImageCache[resolvedCacheKey] = image;
-    pruneWeakCache(gStaticImageCache);
+    cacheStaticImage(resolvedCacheKey, image);
     return image;
 }
 

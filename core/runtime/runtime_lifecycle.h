@@ -139,6 +139,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     }
 
     core::render::beginRenderFrameStats(windowWidth, windowHeight);
+    ImagePrimitive::beginRenderFrame();
     core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
 
     const bool hasRenderableContent = !ui_.roots().empty();
@@ -227,6 +228,8 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale) {
     if (renderBackend == nullptr) {
         return;
     }
+
+    ImagePrimitive::beginRenderFrame();
 
     const RenderTransform identity;
     const std::vector<const Element*>& roots = orderedElements(ui_);

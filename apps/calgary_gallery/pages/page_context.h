@@ -13,6 +13,9 @@
 
 namespace app::gallery {
 
+inline constexpr const char* kExampleUnsplashAccessKey =
+    "2936LnaPNtkGmdCd7lWL93mJ26JUO5Bm-hyD65NWGOQ";
+
 enum class Page { News = 0, About = 1, Exhibitions = 2, Contacts = 3 };
 
 struct Artwork {
@@ -60,7 +63,6 @@ struct UnsplashFeed {
 struct GalleryState {
     Page page = Page::About;
     float pageReveal = 0.0f;
-    int exhibitionFilter = 0;
     int selectedArtwork = -1;
     int selectedPhoto = -1;
     float detailReveal = 0.0f;
@@ -207,19 +209,6 @@ inline std::string resizedUnsplashUrl(const UnsplashPhoto& photo, float displayW
                      "auto=format&fit=max&q=82&w=" + std::to_string(imageWidthBucket(displayWidth, detail)));
 }
 
-inline std::string orderByForFilter() {
-    switch (state.exhibitionFilter) {
-        case 1: return "popular";
-        case 2: return "oldest";
-        default: return "latest";
-    }
-}
-
-inline void resetUnsplashFeed() {
-    state.feed = {};
-    state.exhibitionsScroll.set(0.0f);
-}
-
 inline void requestUnsplashBatch(int columns, bool retry = false) {
     UnsplashFeed& feed = state.feed;
     if (feed.loading || feed.exhausted || (feed.failed && !retry)) {
@@ -227,6 +216,9 @@ inline void requestUnsplashBatch(int columns, bool retry = false) {
     }
     const char* accessKey = std::getenv("EUI_UNSPLASH_ACCESS_KEY");
     if (accessKey == nullptr || *accessKey == '\0') {
+        accessKey = kExampleUnsplashAccessKey;
+    }
+    if (*accessKey == '\0') {
         feed.missingKey = true;
         feed.failed = true;
         feed.error = "Set EUI_UNSPLASH_ACCESS_KEY to load the live feed.";
@@ -241,7 +233,7 @@ inline void requestUnsplashBatch(int columns, bool retry = false) {
     feed.loading = true;
     const std::string url = "https://api.unsplash.com/photos?page=" + std::to_string(feed.nextPage) +
                             "&per_page=" + std::to_string(feed.requestedCount) +
-                            "&order_by=" + orderByForFilter() +
+                            "&order_by=latest" +
                             "&client_id=" + std::string(accessKey);
     eui::network::requestText("calgary.unsplash.feed", url);
 }
