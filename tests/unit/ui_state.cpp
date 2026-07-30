@@ -82,6 +82,33 @@ bool blockPointerUsesArrowCursor() {
     return true;
 }
 
+bool textWrapContentUsesIntrinsicSize() {
+    core::dsl::Ui ui;
+    ui.begin("intrinsic.text");
+    ui.column("root")
+        .size(800.0f, 600.0f)
+        .padding(32.0f)
+        .content([&] {
+            ui.text("title")
+                .text("Hello EUI-NEO")
+                .fontSize(32.0f)
+                .build();
+            ui.stack("button").size(240.0f, 70.0f).build();
+        })
+        .build();
+    ui.end();
+    ui.layout(800.0f, 600.0f);
+
+    const core::dsl::Element* title = ui.find("title");
+    const core::dsl::Element* button = ui.find("button");
+    if (title == nullptr || button == nullptr || title->frame.height <= 0.0f ||
+        button->frame.y <= 32.0f || button->frame.y + button->frame.height > 600.0f) {
+        std::cerr << "intrinsic text size did not keep following content visible\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -111,5 +138,6 @@ int main() {
     ok = repeatedScrollImpulsesAccumulate() && ok;
     ok = scrollMotionCapsLongFrameDelta() && ok;
     ok = blockPointerUsesArrowCursor() && ok;
+    ok = textWrapContentUsesIntrinsicSize() && ok;
     return ok ? 0 : 1;
 }

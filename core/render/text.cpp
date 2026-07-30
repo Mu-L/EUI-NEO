@@ -961,6 +961,7 @@ struct TextPrimitive::Impl {
                                           const std::string& fontFamily = {},
                                           float fontSize = 16.0f,
                                           int fontWeight = 400);
+    static Vec2 measureTextSize(const TextStyle& style);
     static void setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile);
 
     void prepare();
@@ -1224,6 +1225,12 @@ TextPrimitive::TextMetrics TextPrimitive::Impl::measureTextMetrics(const std::st
     }
 
     return makeTextMetrics(text, shapeTextWithFontStack(*holder, text, size));
+}
+
+Vec2 TextPrimitive::Impl::measureTextSize(const TextStyle& style) {
+    TextPrimitive primitive;
+    primitive.setStyle(style);
+    return primitive.measuredSize();
 }
 
 void TextPrimitive::Impl::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
@@ -1745,6 +1752,10 @@ TextPrimitive::TextMetrics TextPrimitive::measureTextMetrics(const std::string& 
                                                              float fontSize,
                                                              int fontWeight) {
     return Impl::measureTextMetrics(text, fontFamily, fontSize, fontWeight);
+}
+
+Vec2 TextPrimitive::measureTextSize(const TextStyle& style) {
+    return Impl::measureTextSize(style);
 }
 void TextPrimitive::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
     Impl::setDefaultFontFiles(textFontFile, iconFontFile);

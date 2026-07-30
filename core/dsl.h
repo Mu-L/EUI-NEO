@@ -5,6 +5,7 @@
 #include "core/input/input_types.h"
 #include "core/render/image_types.h"
 #include "core/render/render_types.h"
+#include "core/render/text.h"
 #include "core/render/text_types.h"
 
 #include <algorithm>
@@ -1528,6 +1529,18 @@ private:
         node->setFlexGrow(element.flexGrow);
         node->setFlexShrink(element.flexShrink);
         node->setIgnoreLayout(element.ignoreLayout);
+        if (element.kind == ElementKind::Text) {
+            TextStyle style;
+            style.text = element.text;
+            style.fontFamily = element.fontFamily;
+            style.fontSize = element.fontSize;
+            style.fontWeight = element.fontWeight;
+            style.maxWidth = element.maxWidth;
+            style.wrap = element.wrap;
+            style.lineHeight = element.lineHeight;
+            const Vec2 intrinsicSize = TextPrimitive::measureTextSize(style);
+            node->setIntrinsicSize(intrinsicSize.x, intrinsicSize.y);
+        }
 
         Node* raw = node.get();
         links.push_back({&element, raw});
