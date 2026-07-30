@@ -89,6 +89,29 @@ struct FontInfoHolder {
     std::vector<std::string> lazyFallbackPaths;
 };
 
+constexpr std::size_t kFontStackCacheCapacity = 16;
+
+struct FontStackCacheEntry {
+    std::shared_ptr<FontInfoHolder> holder;
+    std::uint64_t lastUsed = 0;
+};
+
+struct FontStackCache {
+    std::unordered_map<std::string, FontStackCacheEntry> entries;
+    std::uint64_t accessTick = 0;
+};
+
+FontStackCache& sharedFontStackCache() {
+    static FontStackCache cache;
+    return cache;
+}
+
+void clearSharedFontStackCache() {
+    FontStackCache& cache = sharedFontStackCache();
+    cache.entries.clear();
+    cache.accessTick = 0;
+}
+
 struct AtlasPage {
     int width = 0;
     int height = 0;
@@ -511,11 +534,12 @@ std::string fontStackCacheKey(const std::string& fontPath, float fontSize) {
 }
 
 std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath, float fontSize) {
-    static std::unordered_map<std::string, std::weak_ptr<FontInfoHolder>> cache;
-
     const std::string cacheKey = fontStackCacheKey(fontPath, fontSize);
-    if (auto cached = cache[cacheKey].lock()) {
-        return cached;
+    FontStackCache& cache = sharedFontStackCache();
+    const auto existing = cache.entries.find(cacheKey);
+    if (existing != cache.entries.end()) {
+        existing->second.lastUsed = ++cache.accessTick;
+        return existing->second.holder;
     }
 
     auto holder = std::make_shared<FontInfoHolder>();
@@ -575,8 +599,18 @@ std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath,
     addLazyFallback("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
 #endif
 
-    cache[cacheKey] = holder;
-    return holder;
+    if (cache.entries.size() >= kFontStackCacheCapacity) {
+        const auto oldest = std::min_element(cache.entries.begin(), cache.entries.end(),
+                                             [](const auto& left, const auto& right) {
+                                                 return left.second.lastUsed < right.second.lastUsed;
+                                             });
+        if (oldest != cache.entries.end()) {
+            cache.entries.erase(oldest);
+        }
+    }
+
+    const auto inserted = cache.entries.emplace(cacheKey, FontStackCacheEntry{holder, ++cache.accessTick});
+    return inserted.first->second.holder;
 }
 
 bool isCombiningMark(unsigned int codepoint) {
@@ -752,33 +786,25 @@ std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder
 std::vector<TextPrimitive::ShapedGlyph> shapeTextWithFontStack(FontInfoHolder& holder,
                                                                const std::string& text,
                                                                float fontSize) {
-    std::vector<TextPrimitive::ShapedGlyph> shaped = shapeWithFallback(holder, text, fontSize);
-    for (TextPrimitive::ShapedGlyph& glyph : shaped) {
-        int nextStart = static_cast<int>(text.size());
-        for (const TextPrimitive::ShapedGlyph& candidate : shaped) {
-            if (candidate.byteStart > glyph.byteStart && candidate.byteStart < nextStart) {
-                nextStart = candidate.byteStart;
-            }
-        }
-        glyph.byteEnd = std::max(glyph.byteEnd, nextStart);
-    }
-    return shaped;
+    // shapeWithFallback already advances UTF-8 one codepoint at a time, so a
+    // glyph's byteEnd is the next glyph's byteStart.  Avoid rescanning every
+    // glyph to rediscover that boundary; long editable text is measured often.
+    return shapeWithFallback(holder, text, fontSize);
 }
 
 TextPrimitive::TextMetrics makeTextMetrics(const std::string& text,
                                            const std::vector<TextPrimitive::ShapedGlyph>& shaped) {
     TextPrimitive::TextMetrics metrics;
+    metrics.byteIndices.reserve(shaped.size() + 1);
+    metrics.caretX.reserve(shaped.size() + 1);
     auto addStop = [&](int byteIndex, float x) {
         byteIndex = std::clamp(byteIndex, 0, static_cast<int>(text.size()));
-        const auto it = std::lower_bound(metrics.byteIndices.begin(), metrics.byteIndices.end(), byteIndex);
-        if (it != metrics.byteIndices.end() && *it == byteIndex) {
-            const size_t slot = static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
-            metrics.caretX[slot] = x;
+        if (!metrics.byteIndices.empty() && metrics.byteIndices.back() == byteIndex) {
+            metrics.caretX.back() = x;
             return;
         }
-        const size_t slot = static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
-        metrics.byteIndices.insert(it, byteIndex);
-        metrics.caretX.insert(metrics.caretX.begin() + static_cast<std::ptrdiff_t>(slot), x);
+        metrics.byteIndices.push_back(byteIndex);
+        metrics.caretX.push_back(x);
     };
 
     addStop(0, 0.0f);
@@ -1201,8 +1227,13 @@ TextPrimitive::TextMetrics TextPrimitive::Impl::measureTextMetrics(const std::st
 }
 
 void TextPrimitive::Impl::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
+    if (defaultUiFontFileOverride() == textFontFile &&
+        defaultIconFontFileOverride() == iconFontFile) {
+        return;
+    }
     defaultUiFontFileOverride() = textFontFile;
     defaultIconFontFileOverride() = iconFontFile;
+    clearSharedFontStackCache();
 }
 
 void TextPrimitive::Impl::prepare() {

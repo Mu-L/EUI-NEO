@@ -68,6 +68,20 @@ bool scrollMotionCapsLongFrameDelta() {
     return true;
 }
 
+bool blockPointerUsesArrowCursor() {
+    core::dsl::Ui ui;
+    ui.begin("block.pointer");
+    ui.rect("surface").size(120.0f, 80.0f).blockPointer().build();
+    ui.end();
+
+    const core::dsl::Element* surface = ui.find("surface");
+    if (surface == nullptr || !surface->interactive || surface->cursor != core::CursorShape::Arrow || surface->onClick) {
+        std::cerr << "pointer blocker did not retain blocker semantics\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -96,5 +110,6 @@ int main() {
     ok = scrollMotionClampsAtBoundary() && ok;
     ok = repeatedScrollImpulsesAccumulate() && ok;
     ok = scrollMotionCapsLongFrameDelta() && ok;
+    ok = blockPointerUsesArrowCursor() && ok;
     return ok ? 0 : 1;
 }
