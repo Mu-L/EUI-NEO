@@ -39,6 +39,8 @@ public:
     void render(int windowWidth, int windowHeight);
 
     static bool isSourceReady(const std::string& source);
+    static bool hasSourceFailed(const std::string& source);
+    static bool retrySource(const std::string& source);
     static bool consumeRemoteImageReady();
     static void releaseCachedTextures();
 

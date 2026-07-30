@@ -72,10 +72,17 @@ struct ImagePrimitive::Impl {
     static bool isSourceReady(const std::string& source) {
         return render::image::isSourceReady(source);
     }
+    static bool hasSourceFailed(const std::string& source) {
+        return render::image::hasSourceFailed(source);
+    }
+    static bool retrySource(const std::string& source) {
+        return render::image::retrySource(source);
+    }
     static bool consumeRemoteImageReady() { return render::image::consumeRemoteImageReady(); }
     static void releaseCachedTextures();
 
     void releaseTexture();
+    bool ensureStaticPixels();
     static render::RenderBackend::TextureHandle acquireCachedTexture(render::RenderBackend& backend,
                                                                      const std::string& cacheKey,
                                                                      const unsigned char* pixels,
@@ -91,6 +98,7 @@ struct ImagePrimitive::Impl {
     std::string loadedSource_;
     std::string loadedSvgKey_;
     std::string loadedSvgSource_;
+    std::string loadedStaticPath_;
     bool flipVertically_ = false;
     bool loadedFlipVertically_ = false;
     bool pendingLoad_ = false;
@@ -110,6 +118,7 @@ struct ImagePrimitive::Impl {
     int textureWidth_ = 0;
     int textureHeight_ = 0;
     bool textureDirty_ = false;
+    bool staticContentLoaded_ = false;
     std::string desiredTextureCacheKey_;
     std::string loadedTextureCacheKey_;
     std::shared_ptr<const render::image::StaticImageData> staticImage_;
@@ -131,6 +140,26 @@ void ImagePrimitive::Impl::destroy() {
     loadedSource_.clear();
     loadedSvgKey_.clear();
     loadedSvgSource_.clear();
+    loadedStaticPath_.clear();
+    staticContentLoaded_ = false;
+}
+
+bool ImagePrimitive::Impl::ensureStaticPixels() {
+    if (staticImage_) {
+        return true;
+    }
+
+    if (!loadedSvgKey_.empty() || !loadedSvgSource_.empty()) {
+        staticImage_ = render::image::loadStaticSvg(loadedSvgKey_, loadedSvgSource_, loadedFlipVertically_);
+    } else if (!loadedStaticPath_.empty()) {
+        staticImage_ = render::image::loadStaticImageFromPath(loadedStaticPath_, loadedFlipVertically_);
+    }
+    if (!staticImage_) {
+        return false;
+    }
+    textureWidth_ = staticImage_->width;
+    textureHeight_ = staticImage_->height;
+    return true;
 }
 
 bool ImagePrimitive::Impl::updateTexture() {
@@ -139,7 +168,7 @@ bool ImagePrimitive::Impl::updateTexture() {
     if (!svgKey_.empty() || !svgSource_.empty()) {
         pendingLoad_ = false;
         if (loadedSvgKey_ == svgKey_ && loadedSvgSource_ == svgSource_ &&
-            loadedFlipVertically_ == flipVertically_ && staticImage_) {
+            loadedFlipVertically_ == flipVertically_ && staticContentLoaded_) {
             return false;
         }
 
@@ -147,6 +176,7 @@ bool ImagePrimitive::Impl::updateTexture() {
             render::image::loadStaticSvg(svgKey_, svgSource_, flipVertically_);
         if (!image) {
             staticImage_.reset();
+            staticContentLoaded_ = false;
             desiredTextureCacheKey_.clear();
             textureWidth_ = 0;
             textureHeight_ = 0;
@@ -158,9 +188,11 @@ bool ImagePrimitive::Impl::updateTexture() {
         loadedGifPath_.clear();
         gifFrameCount_ = 0;
         staticImage_ = std::move(image);
+        staticContentLoaded_ = true;
         textureWidth_ = staticImage_->width;
         textureHeight_ = staticImage_->height;
         loadedSource_.clear();
+        loadedStaticPath_.clear();
         loadedSvgKey_ = svgKey_;
         loadedSvgSource_ = svgSource_;
         loadedFlipVertically_ = flipVertically_;
@@ -175,6 +207,7 @@ bool ImagePrimitive::Impl::updateTexture() {
         loadedSvgKey_.clear();
         loadedSvgSource_.clear();
         staticImage_.reset();
+        staticContentLoaded_ = false;
         desiredTextureCacheKey_.clear();
         textureDirty_ = true;
     }
@@ -190,6 +223,8 @@ bool ImagePrimitive::Impl::updateTexture() {
                 return false;
             }
             staticImage_.reset();
+            staticContentLoaded_ = false;
+            loadedStaticPath_.clear();
             loadedGifPath_ = resolvedPath;
             loadedGifFlipVertically_ = flipVertically_;
             gifFrameCount_ = gifFrames_->frameCount;
@@ -219,14 +254,20 @@ bool ImagePrimitive::Impl::updateTexture() {
         return changed;
     }
 
-    if (loadedSource_ == source_ && loadedFlipVertically_ == flipVertically_ && staticImage_) {
+    if (loadedSource_ == source_ && loadedFlipVertically_ == flipVertically_ && staticContentLoaded_) {
         return false;
     }
 
     if (resolvedPath.empty()) {
         pendingLoad_ = pending;
-        if (source_.empty()) {
+        if (source_.empty() || loadedSource_ != source_ || loadedFlipVertically_ != flipVertically_) {
+            releaseTexture();
             staticImage_.reset();
+            gifFrames_.reset();
+            staticContentLoaded_ = false;
+            loadedStaticPath_.clear();
+            loadedGifPath_.clear();
+            gifFrameCount_ = 0;
             desiredTextureCacheKey_.clear();
             loadedSource_.clear();
             textureWidth_ = 0;
@@ -240,14 +281,14 @@ bool ImagePrimitive::Impl::updateTexture() {
         render::image::loadStaticImageFromPath(resolvedPath, flipVertically_);
     pendingLoad_ = pending;
     if (!image) {
-        if (source_.empty()) {
-            staticImage_.reset();
-            desiredTextureCacheKey_.clear();
-            loadedSource_.clear();
-            textureWidth_ = 0;
-            textureHeight_ = 0;
-            textureDirty_ = true;
-        }
+        staticImage_.reset();
+        staticContentLoaded_ = false;
+        loadedStaticPath_.clear();
+        desiredTextureCacheKey_.clear();
+        loadedSource_.clear();
+        textureWidth_ = 0;
+        textureHeight_ = 0;
+        textureDirty_ = true;
         return false;
     }
 
@@ -255,9 +296,11 @@ bool ImagePrimitive::Impl::updateTexture() {
     loadedGifPath_.clear();
     gifFrameCount_ = 0;
     staticImage_ = std::move(image);
+    staticContentLoaded_ = true;
     textureWidth_ = staticImage_->width;
     textureHeight_ = staticImage_->height;
     loadedSource_ = source_;
+    loadedStaticPath_ = resolvedPath;
     loadedFlipVertically_ = flipVertically_;
     desiredTextureCacheKey_ = render::image::imageCacheKey(resolvedPath, flipVertically_);
     textureDirty_ = true;
@@ -283,25 +326,32 @@ void ImagePrimitive::Impl::render(int windowWidth, int windowHeight) {
                                        static_cast<std::size_t>(gifFrames_->height) * 4u;
         pixels = gifFrames_->pixels.data() + frameBytes * static_cast<std::size_t>(gifFrameIndex_);
     } else if (staticImage_) {
-        pixels = staticImage_->pixels.data();
-    }
-    if (pixels == nullptr || textureWidth_ <= 0 || textureHeight_ <= 0) {
-        releaseTexture();
-        return;
+        pixels = staticImage_->pixels.get();
     }
 
-    const bool wantsCachedTexture = staticImage_ && !desiredTextureCacheKey_.empty();
+    const bool wantsCachedTexture = staticContentLoaded_ && !desiredTextureCacheKey_.empty();
     if (wantsCachedTexture) {
         if (loadedTextureCacheKey_ != desiredTextureCacheKey_ || textureBackend_ != backend) {
             releaseTexture();
             texture_ = acquireCachedTexture(*backend, desiredTextureCacheKey_, pixels, textureWidth_, textureHeight_);
+            if (texture_ == nullptr && pixels == nullptr && ensureStaticPixels()) {
+                pixels = staticImage_->pixels.get();
+                texture_ = acquireCachedTexture(*backend, desiredTextureCacheKey_, pixels, textureWidth_, textureHeight_);
+            }
             if (texture_ != nullptr) {
                 textureBackend_ = backend;
                 loadedTextureCacheKey_ = desiredTextureCacheKey_;
                 textureDirty_ = false;
             }
         }
+        if (texture_ != nullptr) {
+            staticImage_.reset();
+        }
     } else {
+        if (pixels == nullptr || textureWidth_ <= 0 || textureHeight_ <= 0) {
+            releaseTexture();
+            return;
+        }
         if (!loadedTextureCacheKey_.empty()) {
             releaseTexture();
         }
@@ -349,7 +399,7 @@ render::RenderBackend::TextureHandle ImagePrimitive::Impl::acquireCachedTexture(
                                                                                 const unsigned char* pixels,
                                                                                 int width,
                                                                                 int height) {
-    if (cacheKey.empty() || pixels == nullptr || width <= 0 || height <= 0) {
+    if (cacheKey.empty() || width <= 0 || height <= 0) {
         return nullptr;
     }
     TextureCache& cache = gTextureCaches[&backend];
@@ -357,6 +407,9 @@ render::RenderBackend::TextureHandle ImagePrimitive::Impl::acquireCachedTexture(
     if (cached != cache.end()) {
         ++cached->second.references;
         return cached->second.texture;
+    }
+    if (pixels == nullptr) {
+        return nullptr;
     }
 
     render::RenderBackend::TextureHandle texture = backend.createTexture(pixels, width, height);
@@ -534,6 +587,8 @@ bool ImagePrimitive::hasPendingLoad() const { return impl_->hasPendingLoad(); }
 bool ImagePrimitive::isAnimating() const { return impl_->isAnimating(); }
 void ImagePrimitive::render(int windowWidth, int windowHeight) { impl_->render(windowWidth, windowHeight); }
 bool ImagePrimitive::isSourceReady(const std::string& source) { return Impl::isSourceReady(source); }
+bool ImagePrimitive::hasSourceFailed(const std::string& source) { return Impl::hasSourceFailed(source); }
+bool ImagePrimitive::retrySource(const std::string& source) { return Impl::retrySource(source); }
 bool ImagePrimitive::consumeRemoteImageReady() { return Impl::consumeRemoteImageReady(); }
 void ImagePrimitive::releaseCachedTextures() { Impl::releaseCachedTextures(); }
 
