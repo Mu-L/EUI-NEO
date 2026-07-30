@@ -740,7 +740,11 @@ size_t findEmojiFaceForCodepoint(FontInfoHolder& holder, unsigned int codepoint,
     return findFaceForCodepoint(holder, codepoint, fontSize);
 }
 
-float loadGlyphAdvance(const FontFace& face, unsigned int glyphIndex, unsigned int codepoint, float fontSize) {
+float loadGlyphAdvance(const FontFace& face,
+                       unsigned int glyphIndex,
+                       unsigned int codepoint,
+                       float fontSize,
+                       float maxGlyphHeight) {
     if (codepoint == '\t') {
         return fontSize * 4.0f;
     }
@@ -751,16 +755,22 @@ float loadGlyphAdvance(const FontFace& face, unsigned int glyphIndex, unsigned i
         return fontSize * 0.5f;
     }
 
-    if (FT_IS_SCALABLE(face.face)) {
-        return static_cast<float>(face.face->glyph->linearHoriAdvance) / 65536.0f * face.glyphScale;
+    float glyphScale = face.glyphScale;
+    const float glyphHeight = static_cast<float>(face.face->glyph->metrics.height) / 64.0f;
+    if (face.colored && glyphHeight > 0.0f) {
+        glyphScale = std::min(glyphScale, maxGlyphHeight / glyphHeight);
     }
-    return static_cast<float>(face.face->glyph->advance.x) / 64.0f * face.glyphScale;
+    if (FT_IS_SCALABLE(face.face)) {
+        return static_cast<float>(face.face->glyph->linearHoriAdvance) / 65536.0f * glyphScale;
+    }
+    return static_cast<float>(face.face->glyph->advance.x) / 64.0f * glyphScale;
 }
 
 std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder,
                                                           const std::string& text,
                                                           float fontSize) {
     std::vector<TextPrimitive::ShapedGlyph> shaped;
+    const float maxGlyphHeight = holder.faces.front().ascent - holder.faces.front().descent;
     size_t index = 0;
     while (index < text.size()) {
         const size_t start = index;
@@ -771,7 +781,7 @@ std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder
             : findFaceForCodepoint(holder, codepoint, fontSize);
         const FontFace& face = holder.faces[faceIndex];
         const unsigned int glyphIndex = codepoint == '\t' ? 0 : FT_Get_Char_Index(face.face, codepoint);
-        const float advance = loadGlyphAdvance(face, glyphIndex, codepoint, fontSize);
+        const float advance = loadGlyphAdvance(face, glyphIndex, codepoint, fontSize, maxGlyphHeight);
         shaped.push_back({glyphIndex == 0 && codepoint == '\t' ? 0 : makeGlyphKey(faceIndex, glyphIndex),
                           codepoint,
                           static_cast<int>(start),
@@ -1389,12 +1399,17 @@ bool TextPrimitive::Impl::ensureGlyph(const ShapedGlyph& shaped) {
 
     const FT_Bitmap& bitmap = slot->bitmap;
     const bool colorBitmap = bitmap.pixel_mode == FT_PIXEL_MODE_BGRA;
+    float glyphScale = face.glyphScale;
+    if (colorBitmap && bitmap.rows > 0) {
+        const float emHeight = ascent_ - descent_;
+        glyphScale = std::min(glyphScale, emHeight / static_cast<float>(bitmap.rows));
+    }
     glyph.colored = colorBitmap;
-    glyph.xOffset = static_cast<float>(slot->bitmap_left) * face.glyphScale;
-    glyph.yOffset = ascent_ - static_cast<float>(slot->bitmap_top) * face.glyphScale;
-    glyph.width = static_cast<float>(bitmap.width) * face.glyphScale;
-    glyph.height = static_cast<float>(bitmap.rows) * face.glyphScale;
-    if (colorBitmap && face.colored) {
+    glyph.xOffset = static_cast<float>(slot->bitmap_left) * glyphScale;
+    glyph.yOffset = ascent_ - static_cast<float>(slot->bitmap_top) * glyphScale;
+    glyph.width = static_cast<float>(bitmap.width) * glyphScale;
+    glyph.height = static_cast<float>(bitmap.rows) * glyphScale;
+    if (colorBitmap) {
         glyph.yOffset = ascent_ - descent_ - glyph.height;
     }
 
@@ -1407,8 +1422,10 @@ bool TextPrimitive::Impl::ensureGlyph(const ShapedGlyph& shaped) {
     SharedTextAtlas& atlas = sharedTextAtlas();
     AtlasPage& page = colorBitmap ? atlas.color : atlas.gray;
     if (const auto cached = page.glyphs.find(cacheKey); cached != page.glyphs.end()) {
-        glyph = cached->second;
-        glyph.advance = shaped.advance;
+        glyph.u0 = cached->second.u0;
+        glyph.v0 = cached->second.v0;
+        glyph.u1 = cached->second.u1;
+        glyph.v1 = cached->second.v1;
         cacheGlyph(shaped.key, glyph);
         return true;
     }
@@ -1526,6 +1543,16 @@ void TextPrimitive::Impl::invalidateVertices() {
 void TextPrimitive::Impl::rebuildVertices() {
     vertices_.clear();
     const float lineHeight = style_.lineHeight > 0.0f ? style_.lineHeight : style_.fontSize * 1.2f;
+    const auto close = [](float left, float right) {
+        return std::fabs(left - right) <= 0.0001f;
+    };
+    const bool pixelAlignedMatrix = hasTransformMatrix_ &&
+        close(transformMatrix_.m00, 1.0f) && close(transformMatrix_.m01, 0.0f) &&
+        close(transformMatrix_.m10, 0.0f) && close(transformMatrix_.m11, 1.0f) &&
+        close(transformMatrix_.px, 0.0f) && close(transformMatrix_.py, 0.0f) &&
+        close(transformMatrix_.pw, 1.0f) &&
+        close(transformMatrix_.tx, std::round(transformMatrix_.tx)) &&
+        close(transformMatrix_.ty, std::round(transformMatrix_.ty));
     float blockYOffset = 0.0f;
     if (style_.verticalAlign == VerticalAlign::Center) {
         float inkTop = std::numeric_limits<float>::max();
@@ -1611,6 +1638,15 @@ void TextPrimitive::Impl::rebuildVertices() {
                 p1 = scalePoint(p1);
                 p2 = scalePoint(p2);
                 p3 = scalePoint(p3);
+            }
+
+            if (!glyph.colored && pixelAlignedMatrix) {
+                const float offsetX = std::round(p0.x) - p0.x;
+                const float offsetY = std::round(p0.y) - p0.y;
+                p0 = {p0.x + offsetX, p0.y + offsetY};
+                p1 = {p1.x + offsetX, p1.y + offsetY};
+                p2 = {p2.x + offsetX, p2.y + offsetY};
+                p3 = {p3.x + offsetX, p3.y + offsetY};
             }
 
             vertices_.insert(vertices_.end(), {
