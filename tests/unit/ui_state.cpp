@@ -109,6 +109,24 @@ bool textWrapContentUsesIntrinsicSize() {
     return true;
 }
 
+bool textSizeMeasurementMatchesLineLayout() {
+    core::TextStyle style;
+    style.text = "first\nsecond";
+    style.fontFamily = "monospace";
+    style.fontSize = 20.0f;
+    style.lineHeight = 26.0f;
+
+    const core::Vec2 size = core::TextPrimitive::measureTextSize(style);
+    const float expectedWidth = std::max(
+        core::TextPrimitive::measureTextWidth("first", style.fontFamily, style.fontSize),
+        core::TextPrimitive::measureTextWidth("second", style.fontFamily, style.fontSize));
+    if (!closeEnough(size.x, expectedWidth) || !closeEnough(size.y, 52.0f)) {
+        std::cerr << "text intrinsic measurement diverged from line layout\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -139,5 +157,6 @@ int main() {
     ok = scrollMotionCapsLongFrameDelta() && ok;
     ok = blockPointerUsesArrowCursor() && ok;
     ok = textWrapContentUsesIntrinsicSize() && ok;
+    ok = textSizeMeasurementMatchesLineLayout() && ok;
     return ok ? 0 : 1;
 }

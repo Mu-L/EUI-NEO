@@ -1228,9 +1228,41 @@ TextPrimitive::TextMetrics TextPrimitive::Impl::measureTextMetrics(const std::st
 }
 
 Vec2 TextPrimitive::Impl::measureTextSize(const TextStyle& style) {
-    TextPrimitive primitive;
-    primitive.setStyle(style);
-    return primitive.measuredSize();
+    const float lineHeight = style.lineHeight > 0.0f ? style.lineHeight : style.fontSize * 1.2f;
+    const float maxWidth = style.wrap && style.maxWidth > 0.0f ? style.maxWidth : 0.0f;
+    float measuredWidth = 0.0f;
+    int lineCount = 0;
+
+    size_t paragraphStart = 0;
+    while (paragraphStart <= style.text.size()) {
+        const size_t newline = style.text.find('\n', paragraphStart);
+        const size_t paragraphEnd = newline == std::string::npos ? style.text.size() : newline;
+        std::string paragraph = style.text.substr(paragraphStart, paragraphEnd - paragraphStart);
+        if (!paragraph.empty() && paragraph.back() == '\r') {
+            paragraph.pop_back();
+        }
+
+        const TextMetrics metrics = measureTextMetrics(paragraph, style.fontFamily, style.fontSize, style.fontWeight);
+        float lineWidth = 0.0f;
+        ++lineCount;
+        for (size_t index = 1; index < metrics.caretX.size(); ++index) {
+            const float advance = metrics.caretX[index] - metrics.caretX[index - 1];
+            if (maxWidth > 0.0f && lineWidth > 0.0f && lineWidth + advance > maxWidth) {
+                measuredWidth = std::max(measuredWidth, lineWidth);
+                lineWidth = 0.0f;
+                ++lineCount;
+            }
+            lineWidth += advance;
+        }
+        measuredWidth = std::max(measuredWidth, lineWidth);
+
+        if (newline == std::string::npos) {
+            break;
+        }
+        paragraphStart = newline + 1;
+    }
+
+    return {measuredWidth, static_cast<float>(lineCount) * lineHeight};
 }
 
 void TextPrimitive::Impl::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
