@@ -17,14 +17,16 @@ inline void unsplashCard(eui::Ui& ui, const std::string& id, int index, float wi
     UnsplashPhoto& photo = state.feed.photos[static_cast<std::size_t>(index)];
     const float imageHeight = std::max(1.0f, height - kCardCaptionHeight);
     const std::string source = resizedUnsplashUrl(photo, width);
-    const bool ready = !suspendRemoteImages && eui::image::isSourceReady(source);
+    const bool ready = suspendRemoteImages ? !photo.readyListUrl.empty()
+                                           : eui::image::isSourceReady(source);
     const bool failed = !suspendRemoteImages && eui::image::hasSourceFailed(source);
-    if (ready) {
+    if (!suspendRemoteImages && ready) {
         photo.readyListUrl = source;
     }
+    const std::string& displaySource = suspendRemoteImages ? photo.readyListUrl : source;
     ui.rect(id + ".skeleton").size(width, imageHeight).color({0.87f, 0.85f, 0.80f, 1.0f})
         .radius(3.0f).build();
-    ui.image(id + ".image").size(width, imageHeight).source(suspendRemoteImages ? "" : source).cover()
+    ui.image(id + ".image").size(width, imageHeight).source(displaySource).cover()
         .radius(3.0f).opacity(ready ? 1.0f : 0.0f).translateY(ready ? 0.0f : 12.0f)
         .transition(pageMotion()).build();
     ui.rect(id + ".shade").size(width, imageHeight).color({0.02f, 0.018f, 0.015f, 0.18f})
