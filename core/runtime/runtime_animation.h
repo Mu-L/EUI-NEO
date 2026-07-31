@@ -49,8 +49,7 @@ inline bool isImageAnimating(const runtime::ImageInstance& instance) {
            instance.radius.isActive() ||
            instance.opacity.isActive() ||
            instance.transform.isActive() ||
-           instance.primitive->isAnimating() ||
-           instance.primitive->hasPendingLoad();
+           instance.primitive->isAnimating();
 }
 
 inline bool isLayoutAnimating(const runtime::LayoutInstance& instance) {

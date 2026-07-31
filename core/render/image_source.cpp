@@ -45,6 +45,7 @@
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace core::render::image {
 namespace {
@@ -52,6 +53,7 @@ namespace {
 std::unordered_map<std::string, std::weak_ptr<const StaticImageData>> gStaticImageCache;
 std::unordered_map<std::string, std::weak_ptr<const GifFrameData>> gGifCache;
 std::unordered_map<std::string, std::uint64_t> gDecodedStaticImageKeys;
+std::unordered_set<std::string> gStaticDecodeInFlight;
 struct RetainedStaticImage {
     std::shared_ptr<const StaticImageData> image;
     std::uint64_t lastUse = 0;
@@ -87,7 +89,8 @@ constexpr std::size_t kMaxRetainedStaticImageBytes = 64u * 1024u * 1024u;
 constexpr std::size_t kMaxThemeColorCacheEntries = 512;
 constexpr std::size_t kMaxDownloadedPathEntries = 512;
 constexpr std::size_t kMaxFailedDownloadEntries = 256;
-constexpr std::size_t kMaxRemoteImageRequests = 24;
+constexpr std::size_t kMaxRemoteImageRequests = 4;
+constexpr std::size_t kMaxRemoteImageDecodes = 2;
 
 template <typename Cache>
 void pruneWeakCache(Cache& cache) {
@@ -991,7 +994,14 @@ std::shared_ptr<const StaticImageData> requestStaticImageFromPath(const std::str
     if (status == async::Status::Failed) {
         return {};
     }
+    if (gStaticDecodeInFlight.size() >= kMaxRemoteImageDecodes) {
+        if (pending != nullptr) {
+            *pending = true;
+        }
+        return {};
+    }
 
+    gStaticDecodeInFlight.insert(taskKey);
     const bool started = async::runOnce(
         taskKey,
         [resolvedPath, flipVertically]() -> async::Result<std::shared_ptr<const StaticImageData>> {
@@ -1002,6 +1012,7 @@ std::shared_ptr<const StaticImageData> requestStaticImageFromPath(const std::str
             return async::success(std::move(image));
         },
         [cacheKey, taskKey](const async::Result<std::shared_ptr<const StaticImageData>>& result) {
+            gStaticDecodeInFlight.erase(taskKey);
             if (result.ok && result.value) {
                 cacheStaticImage(cacheKey, result.value);
                 async::forget(taskKey);
@@ -1010,6 +1021,9 @@ std::shared_ptr<const StaticImageData> requestStaticImageFromPath(const std::str
             }
             gRemoteImageReady.store(true);
         });
+    if (!started) {
+        gStaticDecodeInFlight.erase(taskKey);
+    }
     if (pending != nullptr) {
         *pending = started || async::running(taskKey);
     }

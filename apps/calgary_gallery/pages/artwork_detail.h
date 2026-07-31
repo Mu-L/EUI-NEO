@@ -1,6 +1,6 @@
 #pragma once
 
-#include "components/gallery_components.h"
+#include "components/detail_media.h"
 
 namespace app::gallery {
 
@@ -15,7 +15,6 @@ inline void composeArtworkDetail(eui::Ui& ui, const eui::Screen& screen) {
     const UnsplashPhoto* photo = hasRemote ? &state.feed.photos[static_cast<std::size_t>(state.selectedPhoto)] : nullptr;
     const std::string title = photo != nullptr ? photo->title : artwork->title;
     const std::string artist = photo != nullptr ? photo->photographer : artwork->artist;
-    const std::string image = photo != nullptr ? resizedUnsplashUrl(*photo, 960.0f, true) : artwork->image;
     const std::string medium = photo != nullptr ? "Photography / Unsplash" :
         std::string(artwork->year) + "\n" + artwork->medium;
 
@@ -39,6 +38,12 @@ inline void composeArtworkDetail(eui::Ui& ui, const eui::Screen& screen) {
     const float panelHeight = std::min(compact ? screen.height - 38.0f : 650.0f, screen.height - 38.0f);
     const float panelX = (screen.width - panelWidth) * 0.5f;
     const float panelY = (screen.height - panelHeight) * 0.5f;
+    const float mediaWidth = compact ? panelWidth : panelWidth * 0.60f;
+    const float mediaHeight = compact ? panelHeight * 0.55f : panelHeight;
+    const std::string image = photo != nullptr ? resizedUnsplashUrl(*photo, mediaWidth, true) : artwork->image;
+    const std::string previewImage = photo != nullptr ? photo->readyListUrl : std::string{};
+    const bool imageReady = photo == nullptr || eui::image::isSourceReady(image);
+    const bool imageFailed = photo != nullptr && eui::image::hasSourceFailed(image);
 
     ui.stack("detail.overlay").size(screen.width, screen.height).zIndex(1100).content([&] {
         ui.rect("detail.backdrop").size(screen.width, screen.height)
@@ -50,8 +55,8 @@ inline void composeArtworkDetail(eui::Ui& ui, const eui::Screen& screen) {
                 components::mouseArea(ui, "detail.panel.block").size(panelWidth, panelHeight)
                     .cursor(eui::CursorShape::Arrow).build();
                 if (!compact) {
-                    ui.image("detail.image").size(panelWidth * 0.60f, panelHeight)
-                        .source(image).coverViewport(panelWidth * 0.60f, panelHeight).build();
+                    detailMedia(ui, mediaWidth, mediaHeight, image, previewImage,
+                                photo != nullptr, imageReady, imageFailed);
                     sectionEyebrow(ui, "detail.eyebrow", photo != nullptr ? "UNSPLASH PHOTOGRAPH" : "SELECTED WORK",
                                    panelWidth * 0.65f, 70.0f, panelWidth * 0.29f);
                     serifHeading(ui, "detail.title", title, panelWidth * 0.65f, 112.0f,
@@ -71,9 +76,9 @@ inline void composeArtworkDetail(eui::Ui& ui, const eui::Screen& screen) {
                                  panelWidth * 0.65f, 464.0f, panelWidth * 0.29f, 116.0f, 14.0f, kInk);
                     }
                 } else {
-                    const float imageHeight = panelHeight * 0.55f;
-                    ui.image("detail.image").size(panelWidth, imageHeight).source(image)
-                        .coverViewport(panelWidth, imageHeight).build();
+                    const float imageHeight = mediaHeight;
+                    detailMedia(ui, mediaWidth, mediaHeight, image, previewImage,
+                                photo != nullptr, imageReady, imageFailed);
                     sectionEyebrow(ui, "detail.eyebrow", photo != nullptr ? "UNSPLASH PHOTOGRAPH" : "SELECTED WORK",
                                    24.0f, imageHeight + 26.0f, panelWidth - 48.0f);
                     serifHeading(ui, "detail.title", title, 24.0f, imageHeight + 54.0f,

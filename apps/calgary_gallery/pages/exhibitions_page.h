@@ -12,15 +12,19 @@ inline float localFallbackHeight(int index, float width) {
            kCardCaptionHeight;
 }
 
-inline void unsplashCard(eui::Ui& ui, const std::string& id, int index, float width, float height) {
-    const UnsplashPhoto& photo = state.feed.photos[static_cast<std::size_t>(index)];
+inline void unsplashCard(eui::Ui& ui, const std::string& id, int index, float width, float height,
+                         bool suspendRemoteImages) {
+    UnsplashPhoto& photo = state.feed.photos[static_cast<std::size_t>(index)];
     const float imageHeight = std::max(1.0f, height - kCardCaptionHeight);
     const std::string source = resizedUnsplashUrl(photo, width);
-    const bool ready = eui::image::isSourceReady(source);
-    const bool failed = eui::image::hasSourceFailed(source);
+    const bool ready = !suspendRemoteImages && eui::image::isSourceReady(source);
+    const bool failed = !suspendRemoteImages && eui::image::hasSourceFailed(source);
+    if (ready) {
+        photo.readyListUrl = source;
+    }
     ui.rect(id + ".skeleton").size(width, imageHeight).color({0.87f, 0.85f, 0.80f, 1.0f})
         .radius(3.0f).build();
-    ui.image(id + ".image").size(width, imageHeight).source(source).cover()
+    ui.image(id + ".image").size(width, imageHeight).source(suspendRemoteImages ? "" : source).cover()
         .radius(3.0f).opacity(ready ? 1.0f : 0.0f).translateY(ready ? 0.0f : 12.0f)
         .transition(pageMotion()).build();
     ui.rect(id + ".shade").size(width, imageHeight).color({0.02f, 0.018f, 0.015f, 0.18f})
@@ -114,6 +118,7 @@ inline void composeExhibitionsPage(eui::Ui& ui, float width, float height) {
     const float gridTop = 132.0f;
     const float gridHeight = std::max(120.0f, height - gridTop - 18.0f);
     const int columns = masonryColumns(contentWidth);
+    const bool detailOpen = state.selectedArtwork >= 0 || state.selectedPhoto >= 0;
     if (state.feed.photos.empty() && !state.feed.loading && !state.feed.failed && !state.feed.exhausted) {
         requestUnsplashBatch(columns);
     }
@@ -144,11 +149,15 @@ inline void composeExhibitionsPage(eui::Ui& ui, float width, float height) {
                 const float ratio = std::clamp(static_cast<float>(photo.height) / static_cast<float>(photo.width), 0.72f, 1.62f);
                 return itemWidth * ratio + kCardCaptionHeight;
             })
-            .onEndReached([columns] { requestUnsplashBatch(columns); })
-            .item([remote](eui::Ui& itemUi, const std::string& id, std::int64_t index,
+            .onEndReached([columns, detailOpen] {
+                if (!detailOpen) {
+                    requestUnsplashBatch(columns);
+                }
+            })
+            .item([remote, detailOpen](eui::Ui& itemUi, const std::string& id, std::int64_t index,
                            float itemWidth, float itemHeight) {
                 if (remote) {
-                    unsplashCard(itemUi, id, static_cast<int>(index), itemWidth, itemHeight);
+                    unsplashCard(itemUi, id, static_cast<int>(index), itemWidth, itemHeight, detailOpen);
                 } else {
                     fallbackCard(itemUi, id, static_cast<int>(index), itemWidth, itemHeight);
                 }

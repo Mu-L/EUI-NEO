@@ -39,6 +39,7 @@ inline constexpr std::array<Artwork, 7> kArtworks{{
 struct UnsplashPhoto {
     std::string id;
     std::string rawUrl;
+    std::string readyListUrl;
     std::string title;
     std::string photographer;
     std::string photographerUrl;
@@ -196,6 +197,9 @@ inline std::string withQuery(std::string url, const std::string& query) {
 
 inline int imageWidthBucket(float displayWidth, bool detail = false) {
     if (detail) {
+        const float target = displayWidth * 2.0f;
+        if (target <= 1280.0f) return 1280;
+        if (target <= 1600.0f) return 1600;
         return 1920;
     }
     const float target = displayWidth * 2.0f;
