@@ -160,6 +160,7 @@ public:
                     .clip()
                     .content([&] {
                         ui_.polygon(id_ + ".mark.short")
+                            .size(box, box)
                             .points(markShortPoints)
                             .color(style_.mark)
                             .opacity(checked_ ? 1.0f : 0.0f)
@@ -168,6 +169,7 @@ public:
                             .build();
 
                         ui_.polygon(id_ + ".mark.long")
+                            .size(box, box)
                             .points(markLongPoints)
                             .color(style_.mark)
                             .opacity(checked_ ? 1.0f : 0.0f)
