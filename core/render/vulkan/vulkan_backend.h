@@ -50,6 +50,7 @@ public:
                      const core::Color& tint,
                      const core::Rect& rect,
                      float radius,
+                     float blur,
                      int windowWidth,
                      int windowHeight) override;
     LayerHandle createLayer(int width, int height) override;

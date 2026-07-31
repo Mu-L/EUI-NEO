@@ -103,6 +103,7 @@ void VulkanRenderBackend::drawTexture(TextureHandle handle,
                                       const core::Color& tint,
                                       const core::Rect& rect,
                                       float radius,
+                                      float blur,
                                       int windowWidth,
                                       int windowHeight) {
     auto* texture = static_cast<TextureResource*>(handle);
@@ -145,6 +146,7 @@ void VulkanRenderBackend::drawTexture(TextureHandle handle,
     constants.rect[2] = rect.width;
     constants.rect[3] = rect.height;
     constants.flags[0] = radius;
+    constants.flags[1] = blur;
 
     const VkDeviceSize offset = static_cast<VkDeviceSize>(floatOffset * sizeof(float));
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, imagePipeline_);

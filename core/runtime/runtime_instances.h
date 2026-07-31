@@ -94,6 +94,7 @@ struct ImageInstance {
     AnimatedValue<LayoutRect> frame;
     AnimatedValue<Color> tint;
     AnimatedValue<float> radius;
+    AnimatedValue<float> blur;
     AnimatedValue<float> opacity;
     AnimatedValue<Transform> transform;
     std::string source;

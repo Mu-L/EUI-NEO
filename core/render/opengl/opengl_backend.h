@@ -55,6 +55,7 @@ public:
                      const core::Color& tint,
                      const core::Rect& rect,
                      float radius,
+                     float blur,
                      int windowWidth,
                      int windowHeight) override;
     void drawLayerTexture(TextureHandle handle,
@@ -120,6 +121,7 @@ private:
     int imageTintLocation_ = -1;
     int imageRectLocation_ = -1;
     int imageRadiusLocation_ = -1;
+    int imageBlurLocation_ = -1;
     bool stateCacheValid_ = false;
     bool blendEnabled_ = false;
     bool alphaBlendSet_ = false;

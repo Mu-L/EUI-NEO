@@ -1138,12 +1138,14 @@ inline void Runtime::updateImage(
     changed = instance.frame.setTarget(element.frame, element.transition, !snapFrame && shouldAnimateFrame(element)) || changed;
     changed = instance.tint.setTarget(element.color, element.transition, shouldAnimate(element, AnimProperty::Color)) || changed;
     changed = instance.radius.setTarget(element.radius, element.transition, shouldAnimate(element, AnimProperty::Radius)) || changed;
+    changed = instance.blur.setTarget(element.blur, element.transition, shouldAnimate(element, AnimProperty::Blur)) || changed;
     changed = instance.opacity.setTarget(element.opacity, element.transition, shouldAnimate(element, AnimProperty::Opacity)) || changed;
     changed = instance.transform.setTarget(core::dsl::runtimeTransformForElement(element, scrollStates_, sliderStates_, element.transform), element.transition, shouldAnimate(element, AnimProperty::Transform)) || changed;
 
     changed = instance.frame.tick(deltaSeconds) || changed;
     changed = instance.tint.tick(deltaSeconds) || changed;
     changed = instance.radius.tick(deltaSeconds) || changed;
+    changed = instance.blur.tick(deltaSeconds) || changed;
     changed = instance.opacity.tick(deltaSeconds) || changed;
     changed = instance.transform.tick(deltaSeconds) || changed;
 

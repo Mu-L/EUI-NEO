@@ -338,6 +338,7 @@ Image 支持：
 .contain()
 .stretch()
 .radius(...)
+.blur(...)
 .opacity(...)
 .tint(...)
 .translate(...)

@@ -114,6 +114,7 @@ struct ImagePrimitive::Impl {
     void setBounds(float x, float y, float width, float height) { bounds_ = {x, y, width, height}; }
     void setTint(const Color& tint) { tint_ = tint; }
     void setCornerRadius(float radius) { radius_ = std::max(0.0f, radius); }
+    void setBlur(float blur) { blur_ = std::max(0.0f, blur); }
     void setOpacity(float opacity) { opacity_ = std::clamp(opacity, 0.0f, 1.0f); }
     void setTransform(const Transform& transform) { transform_ = transform; hasTransformMatrix_ = false; }
     void setTransformMatrix(const TransformMatrix& matrix) { transformMatrix_ = matrix; hasTransformMatrix_ = true; }
@@ -167,6 +168,7 @@ struct ImagePrimitive::Impl {
     Rect bounds_;
     Color tint_ = {1.0f, 1.0f, 1.0f, 1.0f};
     float radius_ = 0.0f;
+    float blur_ = 0.0f;
     float opacity_ = 1.0f;
     Transform transform_;
     TransformMatrix transformMatrix_;
@@ -448,7 +450,7 @@ void ImagePrimitive::Impl::render(int windowWidth, int windowHeight) {
     rebuildVertices(vertices);
     Color tint = tint_;
     tint.a *= opacity_;
-    backend->drawTexture(texture_, vertices, 42, tint, bounds_, radius_, windowWidth, windowHeight);
+    backend->drawTexture(texture_, vertices, 42, tint, bounds_, radius_, blur_, windowWidth, windowHeight);
 }
 
 void ImagePrimitive::Impl::releaseTexture() {
@@ -661,6 +663,7 @@ void ImagePrimitive::setFlipVertically(bool value) { impl_->setFlipVertically(va
 void ImagePrimitive::setBounds(float x, float y, float width, float height) { impl_->setBounds(x, y, width, height); }
 void ImagePrimitive::setTint(const Color& tint) { impl_->setTint(tint); }
 void ImagePrimitive::setCornerRadius(float radius) { impl_->setCornerRadius(radius); }
+void ImagePrimitive::setBlur(float blur) { impl_->setBlur(blur); }
 void ImagePrimitive::setOpacity(float opacity) { impl_->setOpacity(opacity); }
 void ImagePrimitive::setTransform(const Transform& transform) { impl_->setTransform(transform); }
 void ImagePrimitive::setTransformMatrix(const TransformMatrix& matrix) { impl_->setTransformMatrix(matrix); }

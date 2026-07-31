@@ -240,6 +240,7 @@ public:
                              const core::Color& tint,
                              const core::Rect& rect,
                              float radius,
+                             float blur,
                              int windowWidth,
                              int windowHeight) {
         (void)handle;
@@ -248,6 +249,7 @@ public:
         (void)tint;
         (void)rect;
         (void)radius;
+        (void)blur;
         (void)windowWidth;
         (void)windowHeight;
     }
@@ -262,6 +264,7 @@ public:
                     vertexFloatCount,
                     {1.0f, 1.0f, 1.0f, 1.0f},
                     rect,
+                    0.0f,
                     0.0f,
                     windowWidth,
                     windowHeight);

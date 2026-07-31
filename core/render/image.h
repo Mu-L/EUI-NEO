@@ -27,6 +27,7 @@ public:
     void setBounds(float x, float y, float width, float height);
     void setTint(const Color& tint);
     void setCornerRadius(float radius);
+    void setBlur(float blur);
     void setOpacity(float opacity);
     void setTransform(const Transform& transform);
     void setTransformMatrix(const TransformMatrix& matrix);

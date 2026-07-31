@@ -666,6 +666,7 @@ inline void Runtime::renderImage(
     instance.primitive->setBounds(frame.x, frame.y, frame.width, frame.height);
     instance.primitive->setTint(instance.tint.value());
     instance.primitive->setCornerRadius(toPixels(instance.radius.value(), dpiScale));
+    instance.primitive->setBlur(toPixels(instance.blur.value(), dpiScale));
     instance.primitive->setOpacity(instance.opacity.value() * renderTransform.opacity);
     instance.primitive->setTransformMatrix(combinedPrimitiveMatrix(renderTransform, frame, transform));
     instance.primitive->setFit(instance.fit);

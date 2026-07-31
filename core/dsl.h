@@ -1163,6 +1163,11 @@ public:
         return *this;
     }
 
+    ImageBuilder& blur(float value) {
+        element_->blur = std::max(0.0f, value);
+        return *this;
+    }
+
     ImageBuilder& flipVertically(bool value = true) {
         element_->imageFlipVertically = value;
         return *this;
