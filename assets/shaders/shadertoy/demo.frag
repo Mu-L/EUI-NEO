@@ -13,11 +13,7 @@
 // and
 //    https://iquilezles.org/articles/distfunctions
 
-#if HW_PERFORMANCE==0
 #define AA 1
-#else
-#define AA 2   // make this 2 or 3 for antialiasing
-#endif
 
 //------------------------------------------------------------------
 float dot2( in vec2 v ) { return dot(v,v); }
