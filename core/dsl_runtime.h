@@ -163,6 +163,8 @@ private:
 
     runtime::ImageInstance& imageInstance(const std::string& id);
 
+    runtime::ShaderToyInstance& shaderToyInstance(const std::string& id);
+
     runtime::InteractionInstance& interactionInstance(const std::string& id);
 
     runtime::DirtyKeyInstance& dirtyKeyInstance(const std::string& id);
@@ -284,6 +286,13 @@ private:
                      const RenderTransform& inheritedTransform,
                      bool snapFrame);
 
+    void updateShaderToy(const Element& element,
+                         const PointerEvent& event,
+                         float deltaSeconds,
+                         float dpiScale,
+                         const RenderTransform& inheritedTransform,
+                         bool snapFrame);
+
     runtime::DependentVisualState dependentVisualStateForElement(const Element& element,
                                                         float dpiScale,
                                                         const RenderTransform& inheritedTransform) const;
@@ -379,11 +388,18 @@ private:
                      float dpiScale,
                      const RenderTransform& renderTransform);
 
+    void renderShaderToy(const Element& element,
+                         int windowWidth,
+                         int windowHeight,
+                         float dpiScale,
+                         const RenderTransform& renderTransform);
+
     Ui ui_;
     std::unordered_map<std::string, runtime::RectInstance> rects_;
     std::unordered_map<std::string, runtime::PolygonInstance> polygons_;
     std::unordered_map<std::string, runtime::TextInstance> texts_;
     std::unordered_map<std::string, runtime::ImageInstance> images_;
+    std::unordered_map<std::string, runtime::ShaderToyInstance> shaderToys_;
     std::unordered_map<std::string, runtime::InteractionInstance> interactions_;
     std::unordered_map<std::string, runtime::DirtyKeyInstance> dirtyKeys_;
     std::unordered_map<std::string, runtime::LayoutInstance> layouts_;
@@ -414,6 +430,7 @@ private:
     bool focusedElementRenderTransformValid_ = false;
     float logicalWidth_ = 0.0f;
     float logicalHeight_ = 0.0f;
+    std::uint64_t updateFrameToken_ = 0;
     core::window::CursorHandle arrowCursor_ = nullptr;
     core::window::CursorHandle handCursor_ = nullptr;
     core::window::CursorHandle currentCursor_ = nullptr;

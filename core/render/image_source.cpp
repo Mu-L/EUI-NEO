@@ -213,15 +213,15 @@ std::string lowerCopy(std::string value) {
 }
 
 bool hasSvgExtension(const std::string& path) {
-    return lowerCopy(std::filesystem::path(path).extension().string()) == ".svg";
+    return lowerCopy(std::filesystem::u8path(path).extension().u8string()) == ".svg";
 }
 
 bool hasGifExtension(const std::string& path) {
-    return lowerCopy(std::filesystem::path(path).extension().string()) == ".gif";
+    return lowerCopy(std::filesystem::u8path(path).extension().u8string()) == ".gif";
 }
 
 bool looksLikeSvgFile(const std::string& path) {
-    std::ifstream input(path, std::ios::binary);
+    std::ifstream input(std::filesystem::u8path(path), std::ios::binary);
     if (!input.good()) {
         return false;
     }
@@ -239,7 +239,7 @@ bool looksLikeSvgFile(const std::string& path) {
 }
 
 bool looksLikeGifFile(const std::string& path) {
-    std::ifstream input(path, std::ios::binary);
+    std::ifstream input(std::filesystem::u8path(path), std::ios::binary);
     if (!input.good()) {
         return false;
     }
@@ -550,7 +550,7 @@ std::string resolveLocalImagePath(const std::string& source) {
         return {};
     }
 
-    const std::filesystem::path raw(source);
+    const std::filesystem::path raw = std::filesystem::u8path(source);
     const std::filesystem::path exeDir = executableDirectory();
     const std::filesystem::path sourceRoot = sourceRootDirectory();
     std::error_code error;
@@ -571,7 +571,7 @@ std::string resolveLocalImagePath(const std::string& source) {
 
     for (const auto& candidate : candidates) {
         if (std::filesystem::exists(candidate, error) && !error) {
-            return std::filesystem::absolute(candidate, error).string();
+            return std::filesystem::absolute(candidate, error).u8string();
         }
         error.clear();
     }
@@ -656,7 +656,7 @@ bool rasterizeSvgFile(const std::string& path,
                       std::vector<unsigned char>& pixels,
                       int& width,
                       int& height) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(std::filesystem::u8path(path), std::ios::binary);
     if (!file.good()) {
         return false;
     }
@@ -667,7 +667,7 @@ bool rasterizeSvgFile(const std::string& path,
 
 bool readBinaryFile(const std::string& path, std::vector<unsigned char>& bytes) {
     bytes.clear();
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(std::filesystem::u8path(path), std::ios::binary);
     if (!file.good()) {
         return false;
     }
@@ -713,12 +713,14 @@ std::string baseImageCacheKey(const std::string& resolvedPath, bool flipVertical
 
 std::string imageFileVersionSuffix(const std::string& resolvedPath) {
     std::error_code error;
-    const std::filesystem::file_time_type modified = std::filesystem::last_write_time(resolvedPath, error);
+    const std::filesystem::path nativePath = std::filesystem::u8path(resolvedPath);
+    const std::filesystem::file_time_type modified =
+        std::filesystem::last_write_time(nativePath, error);
     if (error) {
         return {};
     }
 
-    const auto size = std::filesystem::file_size(resolvedPath, error);
+    const auto size = std::filesystem::file_size(nativePath, error);
     if (error) {
         return {};
     }
@@ -792,7 +794,16 @@ std::shared_ptr<const StaticImageData> decodeStaticImageFromPath(const std::stri
         pixels = svgPixels.data();
     } else {
         stbi_set_flip_vertically_on_load_thread(flipVertically ? 1 : 0);
+#ifdef _WIN32
+        FILE* file = nullptr;
+        const std::filesystem::path nativePath = std::filesystem::u8path(resolvedPath);
+        if (_wfopen_s(&file, nativePath.c_str(), L"rb") == 0 && file != nullptr) {
+            pixels = stbi_load_from_file(file, &width, &height, &channels, STBI_rgb_alpha);
+            std::fclose(file);
+        }
+#else
         pixels = stbi_load(resolvedPath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+#endif
         if (pixels == nullptr || width <= 0 || height <= 0) {
             if (pixels != nullptr) {
                 stbi_image_free(pixels);

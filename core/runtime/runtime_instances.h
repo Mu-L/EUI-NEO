@@ -1,5 +1,7 @@
 #pragma once
 
+#include <core/render/shadertoy_primitive.h>
+
 #include "core/dsl.h"
 #include "core/render/image.h"
 #include "core/render/primitive.h"
@@ -104,6 +106,19 @@ struct ImageInstance {
     bool hasCoverViewport = false;
     Vec2 coverViewportSize;
     Vec2 coverViewportOffset;
+};
+
+struct ShaderToyInstance {
+    std::unique_ptr<ShaderToyPrimitive> primitive = std::make_unique<ShaderToyPrimitive>();
+    bool initialized = false;
+    bool seen = false;
+    AnimatedValue<LayoutRect> frame;
+    AnimatedValue<float> radius;
+    AnimatedValue<float> opacity;
+    AnimatedValue<Transform> transform;
+    std::uint64_t graphHash = 0;
+    std::uint64_t resetKey = 0;
+    std::uint64_t reportedErrorHash = 0;
 };
 
 struct InteractionInstance {

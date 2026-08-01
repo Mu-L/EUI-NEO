@@ -1,5 +1,7 @@
 #pragma once
 
+#include <core/render/shadertoy.h>
+
 #include "core/layout.h"
 #include "core/animation.h"
 #include "core/input/input_types.h"
@@ -55,7 +57,8 @@ enum class ElementKind {
     Polygon,
     Text,
     Image,
-    Svg
+    Svg,
+    Shadertoy
 };
 
 enum class HitTestMode {
@@ -138,6 +141,13 @@ struct Element {
     bool imageHasCoverViewport = false;
     Vec2 imageCoverViewportSize;
     Vec2 imageCoverViewportOffset;
+
+    core::render::ShaderToyGraph shaderToyGraph;
+    float shaderToyResolutionScale = 1.0f;
+    float shaderToyTimeScale = 1.0f;
+    bool shaderToyPaused = false;
+    std::uint64_t shaderToyResetKey = 0;
+    std::function<void(const core::render::ShaderToyError&)> onShaderToyError;
 
     bool interactive = false;
     bool focusable = false;
@@ -1041,6 +1051,41 @@ public:
     RectBuilder(Ui& ui, Element* element) : ShapeBuilderBase<RectBuilder>(ui, element) {}
 };
 
+class ShadertoyBuilder : public ShapeBuilderBase<ShadertoyBuilder> {
+public:
+    ShadertoyBuilder(Ui& ui, Element* element) : ShapeBuilderBase<ShadertoyBuilder>(ui, element) {}
+
+    ShadertoyBuilder& graph(core::render::ShaderToyGraph value) {
+        element_->shaderToyGraph = std::move(value);
+        return *this;
+    }
+
+    ShadertoyBuilder& resolutionScale(float value) {
+        element_->shaderToyResolutionScale = std::clamp(value, 0.125f, 4.0f);
+        return *this;
+    }
+
+    ShadertoyBuilder& timeScale(float value) {
+        element_->shaderToyTimeScale = std::max(0.0f, value);
+        return *this;
+    }
+
+    ShadertoyBuilder& paused(bool value = true) {
+        element_->shaderToyPaused = value;
+        return *this;
+    }
+
+    ShadertoyBuilder& resetKey(std::uint64_t value) {
+        element_->shaderToyResetKey = value;
+        return *this;
+    }
+
+    ShadertoyBuilder& onCompileError(std::function<void(const core::render::ShaderToyError&)> callback) {
+        element_->onShaderToyError = std::move(callback);
+        return *this;
+    }
+};
+
 class PolygonBuilder : public ShapeBuilderBase<PolygonBuilder> {
 public:
     PolygonBuilder(Ui& ui, Element* element) : ShapeBuilderBase<PolygonBuilder>(ui, element) {}
@@ -1318,6 +1363,10 @@ public:
         return RectBuilder(*this, addElement(ElementKind::Rect, id));
     }
 
+    ShadertoyBuilder shadertoy(const std::string& id) {
+        return ShadertoyBuilder(*this, addElement(ElementKind::Shadertoy, id));
+    }
+
     PolygonBuilder polygon(const std::string& id) {
         return PolygonBuilder(*this, addElement(ElementKind::Polygon, id));
     }
@@ -1402,6 +1451,7 @@ private:
     friend class LoaderBuilder;
     friend class BuilderBase<LayoutBuilder>;
     friend class BuilderBase<RectBuilder>;
+    friend class BuilderBase<ShadertoyBuilder>;
     friend class BuilderBase<PolygonBuilder>;
     friend class BuilderBase<TextBuilder>;
     friend class BuilderBase<ImageBuilder>;
@@ -1504,6 +1554,8 @@ private:
             prefix = "__column";
         } else if (kind == ElementKind::Rect) {
             prefix = "__rect";
+        } else if (kind == ElementKind::Shadertoy) {
+            prefix = "__shadertoy";
         } else if (kind == ElementKind::Polygon) {
             prefix = "__polygon";
         } else if (kind == ElementKind::Text) {
@@ -1623,6 +1675,7 @@ private:
                !element.sliderFillSourceId.empty() ||
                !element.sliderKnobSourceId.empty() ||
                !element.dirtyKey.empty() ||
+               element.kind == ElementKind::Shadertoy ||
                (element.kind == ElementKind::Image && !element.imageSource.empty()) ||
                element.kind == ElementKind::Svg;
     }
@@ -1668,6 +1721,7 @@ private:
                !element.sliderFillSourceId.empty() ||
                !element.sliderKnobSourceId.empty() ||
                !element.dirtyKey.empty() ||
+               element.kind == ElementKind::Shadertoy ||
                (element.kind == ElementKind::Image && !element.imageSource.empty()) ||
                element.kind == ElementKind::Svg;
     }

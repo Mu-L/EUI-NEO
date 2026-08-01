@@ -191,6 +191,7 @@ tests/        Probe sources, fixture apps, and local benchmark notes
 - [Network](docs/网络.md)
 - [Platform Capabilities](docs/平台能力.md)
 - [Integration Guide](docs/集成指南.md)
+- [Shadertoy Primitive](docs/Shadertoy.md)
 - [Development And Release](docs/开发与发布.md)
 
 ## License

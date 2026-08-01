@@ -14,7 +14,8 @@ enum class ElementKind {
     Polygon,
     Text,
     Image,
-    Svg
+    Svg,
+    Shadertoy
 };
 ```
 
@@ -366,6 +367,29 @@ const eui::Color accent = eui::image::themeColor(
 ```
 
 `themeColor(source, fallback)` 接受本地路径、`http/https` 图片 URL 和 `bing://daily?...` 源。图片未就绪或解码失败时返回 fallback；成功后返回底层缓存的采样主题色。
+
+## Shadertoy DSL
+
+Shadertoy 是后端无关的 `mainImage()` fragment 图元，使用固定四边形 vertex shader。
+同一个 `ShaderToyGraph` 支持文件/inline source、EUI JSON 和数组式预设导入、按顺序执行的
+多 Pass，以及四路 `sampler2D`。通道 kind 固定为
+`ShaderToyChannel::image()`、`buffer()`、`self()`、`none()`；所有 Pass 使用同一
+目标尺寸和固定 RGBA32F ping-pong feedback。图片采样固定为 linear/repeat，
+Buffer/Self/None 固定为 linear/clamp。
+
+`ShadertoyBuilder::resolutionScale()` 调整整个 graph 的离屏尺寸；
+`timeScale()`、`paused()`、`resetKey()` 和 `onCompileError()` 管理时钟、暂停、
+feedback 重置与结构化错误。builder 继承 `ShapeBuilderBase` 的布局、裁剪、圆角、
+opacity、transform、交互和 dirty rect API。`fill()` 是布局填充，fragment 颜色仍由
+`mainImage()` 输出；`rect` 是四边形几何，不是 vertex shader API。鼠标只在变换和
+裁剪后的 Shadertoy 区域内更新，区域内开始的拖动会捕获到释放。
+
+标准 uniform、自定义 uniform、JSON/schema、Vulkan 构建期 helper、feedback 和双后端
+兼容矩阵见 [Shadertoy 底层图元](Shadertoy.md)。Keyboard、Audio、Video、Sound、
+Cubemap、Volume、动态纹理、可配置 sampler、每 Pass 格式/分辨率明确不属于当前范围，
+也不是待办扩展。可执行示例
+[`examples/shadertoy.cpp`](../examples/shadertoy.cpp) 展示 inline Demo 与 Blackhole、
+Fish、Rainforest 内置预设切换。
 
 ## Polygon DSL
 

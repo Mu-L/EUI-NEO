@@ -50,6 +50,10 @@ inline void Runtime::compose(const std::string& pageId, float logicalWidth, floa
 }
 
 inline bool Runtime::update(core::window::Handle window, float deltaSeconds, float pointerScale, float dpiScale, bool inputEnabled) {
+    ++updateFrameToken_;
+    if (updateFrameToken_ == 0) {
+        ++updateFrameToken_;
+    }
     PointerEvent event = readPointerEvent(window, pointerScale);
     const auto inputEvents = consumeInputEvents(window);
     KeyboardEvent keyboardEvent = inputEvents.first;
@@ -247,6 +251,7 @@ inline void Runtime::shutdown(bool releaseCachedImageTextures) {
     polygons_.clear();
     texts_.clear();
     images_.clear();
+    shaderToys_.clear();
     interactions_.clear();
     dirtyKeys_.clear();
     layouts_.clear();
@@ -282,6 +287,12 @@ inline void Runtime::releaseGraphicsResources(bool releaseCachedImageTextures) {
         }
     }
     for (auto& item : images_) {
+        if (item.second.initialized) {
+            item.second.primitive->destroy();
+            item.second.initialized = false;
+        }
+    }
+    for (auto& item : shaderToys_) {
         if (item.second.initialized) {
             item.second.primitive->destroy();
             item.second.initialized = false;

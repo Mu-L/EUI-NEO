@@ -21,6 +21,7 @@ bool optionGlass = false;
 bool optionMotion = true;
 bool optionUnlockFps = false;
 bool optionNight = true;
+bool optionShaderToy = false;
 float optionAnimationSpeed = 1.0f;
 eui::Color sampleColor = components::theme::defaultPrimary();
 bool workshopOpen = false;
@@ -68,6 +69,16 @@ std::string animationSpeedText() {
     char buffer[16] = {};
     std::snprintf(buffer, sizeof(buffer), "%.2fx", optionAnimationSpeed);
     return buffer;
+}
+
+eui::ShaderToyGraph galleryShaderToyGraph() {
+    eui::ShaderToyGraph graph;
+    graph.addPass("image", EUI_GALLERY_SHADERTOY_SOURCE,
+                  EUI_GALLERY_SHADERTOY_SPIRV);
+    graph.setChannel(
+        "image", 0,
+        eui::ShaderToyChannel::image(EUI_GALLERY_SHADERTOY_NOISE));
+    return graph;
 }
 
 void applyGlobalAnimationSpeed() {

@@ -114,6 +114,11 @@ inline Rect Runtime::visualDirtyRectForElement(
         const LayoutRect frame = instance != images_.end() ? instance->second.frame.value() : element.frame;
         const Transform transform = instance != images_.end() ? instance->second.transform.value() : element.transform;
         local = imageVisualRect(frame, transform);
+    } else if (element.kind == ElementKind::Shadertoy) {
+        const auto instance = shaderToys_.find(element.id);
+        const LayoutRect frame = instance != shaderToys_.end() ? instance->second.frame.value() : element.frame;
+        const Transform transform = instance != shaderToys_.end() ? instance->second.transform.value() : element.transform;
+        local = imageVisualRect(frame, transform);
     }
     return applyRenderTransformToLogicalRect(local, dpiScale, renderTransform);
 }
@@ -326,6 +331,15 @@ inline bool Runtime::elementHasActiveAnimation(const Element& element) const {
         const auto item = images_.find(element.id);
         return item != images_.end() && isImageAnimating(item->second);
     }
+    if (element.kind == ElementKind::Shadertoy) {
+        const auto item = shaderToys_.find(element.id);
+        return item != shaderToys_.end() &&
+               (item->second.primitive->isAnimating() ||
+                item->second.frame.isActive() ||
+                item->second.radius.isActive() ||
+                item->second.opacity.isActive() ||
+                item->second.transform.isActive());
+    }
     return false;
 }
 
@@ -380,6 +394,12 @@ inline runtime::ImageInstance& Runtime::imageInstance(const std::string& id) {
     return instance;
 }
 
+inline runtime::ShaderToyInstance& Runtime::shaderToyInstance(const std::string& id) {
+    runtime::ShaderToyInstance& instance = shaderToys_.try_emplace(id).first->second;
+    instance.seen = true;
+    return instance;
+}
+
 inline runtime::InteractionInstance& Runtime::interactionInstance(const std::string& id) {
     runtime::InteractionInstance& instance = interactions_.try_emplace(id).first->second;
     instance.seen = true;
@@ -419,6 +439,7 @@ inline void Runtime::markInstancesUnseen() {
     runtime::markEntriesUnseen(polygons_);
     runtime::markEntriesUnseen(texts_);
     runtime::markEntriesUnseen(images_);
+    runtime::markEntriesUnseen(shaderToys_);
     runtime::markEntriesUnseen(interactions_);
     runtime::markEntriesUnseen(dirtyKeys_);
     runtime::markEntriesUnseen(layouts_);
@@ -450,6 +471,7 @@ inline void Runtime::releaseUnseenInstances() {
     runtime::releaseUnseenEntries(polygons_, releasePrimitive);
     runtime::releaseUnseenEntries(texts_, releasePrimitive);
     runtime::releaseUnseenEntries(images_, releasePrimitive);
+    runtime::releaseUnseenEntries(shaderToys_, releasePrimitive);
     runtime::releaseUnseenEntries(interactions_, noop);
     runtime::releaseUnseenEntries(dirtyKeys_, noop);
     runtime::releaseUnseenEntries(layouts_, noop);
@@ -833,6 +855,8 @@ inline runtime::PaintBoundsInstance Runtime::updateElementTree(
         updateText(element, deltaSeconds, dpiScale, inheritedTransform, ancestorFrameChanged);
     } else if (element.kind == ElementKind::Image || element.kind == ElementKind::Svg) {
         updateImage(element, deltaSeconds, dpiScale, inheritedTransform, ancestorFrameChanged);
+    } else if (element.kind == ElementKind::Shadertoy) {
+        updateShaderToy(element, event, deltaSeconds, dpiScale, inheritedTransform, ancestorFrameChanged);
     }
 
     const bool childAncestorFrameChanged = ancestorFrameChanged || frameTargetChanged;
@@ -1191,6 +1215,85 @@ inline void Runtime::updateImage(
         addDirtyUnion(beforeRect, afterRect);
     }
     animating_ = animating_ || isImageAnimating(instance);
+}
+
+inline void Runtime::updateShaderToy(
+    const Element& element,
+    const PointerEvent& event,
+    float deltaSeconds,
+    float dpiScale,
+    const RenderTransform& inheritedTransform,
+    bool snapFrame) {
+    runtime::ShaderToyInstance& instance = shaderToyInstance(element.id);
+    const Rect beforeRect = applyRenderTransformToLogicalRect(
+        imageVisualRect(instance.frame.value(), instance.transform.value()),
+        dpiScale, inheritedTransform);
+
+    bool changed = false;
+    changed = instance.frame.setTarget(element.frame, element.transition,
+                                       !snapFrame && shouldAnimateFrame(element)) || changed;
+    changed = instance.radius.setTarget(element.radius, element.transition,
+                                        shouldAnimate(element, AnimProperty::Radius)) || changed;
+    changed = instance.opacity.setTarget(element.opacity, element.transition,
+                                         shouldAnimate(element, AnimProperty::Opacity)) || changed;
+    changed = instance.transform.setTarget(
+        core::dsl::runtimeTransformForElement(element, scrollStates_, sliderStates_, element.transform),
+        element.transition, shouldAnimate(element, AnimProperty::Transform)) || changed;
+    changed = instance.frame.tick(deltaSeconds) || changed;
+    changed = instance.radius.tick(deltaSeconds) || changed;
+    changed = instance.opacity.tick(deltaSeconds) || changed;
+    changed = instance.transform.tick(deltaSeconds) || changed;
+
+    const std::uint64_t graphHash = core::render::shaderToyGraphHash(element.shaderToyGraph);
+    if (instance.graphHash != graphHash) {
+        instance.graphHash = graphHash;
+        instance.primitive->setGraph(element.shaderToyGraph);
+        changed = true;
+    }
+    if (instance.resetKey != element.shaderToyResetKey) {
+        instance.resetKey = element.shaderToyResetKey;
+        instance.primitive->requestReset();
+        changed = true;
+    }
+
+    const LayoutRect frame = instance.frame.value();
+    const Rect pixelFrame = toPixelRect(frame, dpiScale);
+    const Transform localTransform = scaleTransform(instance.transform.value(), dpiScale);
+    const RenderTransform elementTransform = resolveRenderTransform(element, dpiScale, inheritedTransform);
+    const TransformMatrix matrix = combinedPrimitiveMatrix(elementTransform, pixelFrame, localTransform);
+    TransformMatrix inverse;
+    Vec2 pointerPixels{static_cast<float>(event.x), static_cast<float>(event.y)};
+    const bool invertible = inverseMatrix(matrix, inverse);
+    if (invertible) {
+        pointerPixels = core::transformPoint(inverse, pointerPixels.x, pointerPixels.y);
+    }
+    const Vec2 localPointer{pointerPixels.x - pixelFrame.x, pointerPixels.y - pixelFrame.y};
+    const bool pointerInside = invertible &&
+        localPointer.x >= 0.0f && localPointer.y >= 0.0f &&
+        localPointer.x <= pixelFrame.width && localPointer.y <= pixelFrame.height;
+
+    instance.primitive->setElementId(element.id);
+    instance.primitive->setBounds(pixelFrame.x, pixelFrame.y, pixelFrame.width, pixelFrame.height);
+    instance.primitive->setCornerRadius(toPixels(instance.radius.value(), dpiScale));
+    instance.primitive->setOpacity(instance.opacity.value() * elementTransform.opacity);
+    instance.primitive->setTransformMatrix(matrix);
+    instance.primitive->setResolutionScale(element.shaderToyResolutionScale);
+    instance.primitive->setTimeScale(element.shaderToyTimeScale);
+    instance.primitive->setPaused(element.shaderToyPaused);
+    instance.primitive->update(deltaSeconds, localPointer, event.down,
+                               event.pressedThisFrame, event.releasedThisFrame,
+                               updateFrameToken_, pointerInside);
+
+    const bool active = instance.primitive->isAnimating() || instance.frame.isActive() ||
+                        instance.radius.isActive() || instance.opacity.isActive() ||
+                        instance.transform.isActive();
+    if (changed || active) {
+        const Rect afterRect = applyRenderTransformToLogicalRect(
+            imageVisualRect(instance.frame.value(), instance.transform.value()),
+            dpiScale, inheritedTransform);
+        addDirtyUnion(beforeRect, afterRect);
+    }
+    animating_ = animating_ || active;
 }
 
 } // namespace core::dsl
