@@ -18,27 +18,6 @@ enum class Preset { Demo, Blackhole, Fish, Rainforest };
 Preset selectedPreset = Preset::Demo;
 std::string presetError;
 
-constexpr const char kDemoSource[] = R"GLSL(void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-    vec2 centered = uv * 2.0 - 1.0;
-    centered.x *= iResolution.x / iResolution.y;
-
-    vec3 noise = texture(
-        iChannel0, uv * 4.0 + vec2(iTime * 0.02, 0.0)).rgb;
-
-    float distanceToPointer =
-        length(fragCoord - iMouse.xy) / max(iResolution.x, iResolution.y);
-    float wave = 0.5 + 0.5 * cos(
-        8.0 * length(centered) - iTime * 2.5 + distanceToPointer * 18.0);
-    vec3 cold = vec3(0.04, 0.25, 0.58);
-    vec3 warm = vec3(0.95, 0.25, 0.12);
-    vec3 color = mix(cold, warm, wave);
-    color *= 0.82 + noise * 0.18;
-    color *= 0.72 + 0.28 * cos(iTime + uv.xyx * vec3(2.0, 3.0, 4.0));
-    fragColor = vec4(color, 1.0);
-}
-)GLSL";
-
 std::string demoNoisePath() {
 #if defined(EUI_SHADERTOY_PRESETS_DIR)
     return (std::filesystem::u8path(EUI_SHADERTOY_PRESETS_DIR) /
@@ -50,8 +29,8 @@ std::string demoNoisePath() {
 
 eui::ShaderToyGraph demoGraph() {
     eui::ShaderToyGraph graph;
-    graph.addInlinePass("image", kDemoSource, EUI_SHADERTOY_DEMO_SPIRV,
-                        "assets/shaders/shadertoy/demo.frag");
+    graph.addPass("image", EUI_SHADERTOY_DEMO_SOURCE,
+                  EUI_SHADERTOY_DEMO_SPIRV);
     graph.setChannel(
         "image", 0,
         eui::ShaderToyChannel::image(demoNoisePath()));

@@ -98,6 +98,35 @@ struct OpenGLStateScope {
         glActiveTexture(activeTexture);
     }
 
+    void discardBindings(const OpenGLShaderToy& toy) {
+        if (vao == static_cast<GLint>(toy.vao)) vao = 0;
+        if (drawFramebuffer != 0 || readFramebuffer != 0 || program != 0) {
+            for (const ShaderToyPassResource& pass : toy.passes) {
+                if (drawFramebuffer == static_cast<GLint>(pass.framebuffers[0]) ||
+                    drawFramebuffer == static_cast<GLint>(pass.framebuffers[1])) {
+                    drawFramebuffer = 0;
+                }
+                if (readFramebuffer == static_cast<GLint>(pass.framebuffers[0]) ||
+                    readFramebuffer == static_cast<GLint>(pass.framebuffers[1])) {
+                    readFramebuffer = 0;
+                }
+                if (program == static_cast<GLint>(pass.program)) program = 0;
+            }
+        }
+        for (GLint& binding : texture2DBindings) {
+            if (binding == static_cast<GLint>(toy.empty.texture)) binding = 0;
+            for (const ShaderToyPassResource& pass : toy.passes) {
+                if (binding == static_cast<GLint>(pass.textures[0]) ||
+                    binding == static_cast<GLint>(pass.textures[1])) {
+                    binding = 0;
+                }
+            }
+            for (const auto& entry : toy.images) {
+                if (binding == static_cast<GLint>(entry.second.texture)) binding = 0;
+            }
+        }
+    }
+
     ~OpenGLStateScope() {
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(drawFramebuffer));
         glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(readFramebuffer));
@@ -653,6 +682,7 @@ void OpenGLRenderBackend::destroyShaderToy(ShaderToyHandle handle) {
     if (found != shaderToys_.end()) {
         shaderToys_.erase(found);
     }
+    state.discardBindings(*toy);
     destroyToy(*toy);
     delete toy;
     resetStateCache();

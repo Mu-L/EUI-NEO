@@ -372,17 +372,20 @@ if(EUI_BUILD_APPS)
         if(app_name STREQUAL "shadertoy")
             set(shadertoy_demo_spirv
                 "${CMAKE_CURRENT_BINARY_DIR}/shaders/shadertoy_demo.frag.spv")
+            set(shadertoy_demo_source
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/shadertoy/demo.frag")
             set(shadertoy_presets_dir
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/shadertoy")
             set(shadertoy_preset_spirv_dir
                 "${CMAKE_CURRENT_BINARY_DIR}/shadertoy-example-presets")
             target_compile_definitions(shadertoy PRIVATE
+                EUI_SHADERTOY_DEMO_SOURCE="${shadertoy_demo_source}"
                 EUI_SHADERTOY_DEMO_SPIRV="${shadertoy_demo_spirv}"
                 EUI_SHADERTOY_PRESETS_DIR="${shadertoy_presets_dir}"
                 EUI_SHADERTOY_PRESET_SPIRV_DIR="${shadertoy_preset_spirv_dir}")
             if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "vulkan")
                 eui_compile_shadertoy(shadertoy
-                    SOURCE "assets/shaders/shadertoy/demo.frag"
+                    SOURCE "${shadertoy_demo_source}"
                     OUTPUT "${shadertoy_demo_spirv}")
                 if(EXISTS "${shadertoy_presets_dir}")
                     foreach(preset_name IN ITEMS blackhole fish Rainforest)
@@ -470,44 +473,46 @@ if(EUI_BUILD_TEST_FIXTURES)
     endforeach()
 
     if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "vulkan" AND TARGET shadertoy_probe)
+        set(shadertoy_probe_assets_dir
+            "${CMAKE_CURRENT_BINARY_DIR}/shadertoy-test-assets")
         eui_compile_shadertoy(shadertoy_probe
             SOURCE "tests/assets/shadertoy/feedback.frag"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/feedback.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/feedback.frag.spv"
         )
         eui_compile_shadertoy(shadertoy_probe
             SOURCE "tests/assets/shadertoy/buffer.frag"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/buffer.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/buffer.frag.spv"
             UNIFORMS "uValue:float"
         )
         eui_compile_shadertoy(shadertoy_probe
             SOURCE "tests/assets/shadertoy/channels.frag"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/channels.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/channels.frag.spv"
             UNIFORMS "uValue:float"
         )
         eui_compile_shadertoy(shadertoy_probe
             SOURCE "tests/assets/shadertoy/pass_contract.frag"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/pass_contract.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/pass_contract.frag.spv"
         )
         set(EUI_SHADERTOY_INLINE_TEST_SOURCE
             "void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.3, 0.4, 0.5, 1.0); }")
         eui_compile_shadertoy_inline(shadertoy_probe
             CONTENT "${EUI_SHADERTOY_INLINE_TEST_SOURCE}"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/inline.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/inline.frag.spv"
         )
         set(EUI_SHADERTOY_HOT_RELOAD_INITIAL_SOURCE
             "void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.2, 0.0, 0.0, 1.0); }")
         eui_compile_shadertoy_inline(shadertoy_probe
             CONTENT "${EUI_SHADERTOY_HOT_RELOAD_INITIAL_SOURCE}"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/hot_reload_initial.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/hot_reload_initial.frag.spv"
         )
         set(EUI_SHADERTOY_HOT_RELOAD_RECOVERED_SOURCE
             "void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.7, 0.0, 0.0, 1.0); }")
         eui_compile_shadertoy_inline(shadertoy_probe
             CONTENT "${EUI_SHADERTOY_HOT_RELOAD_RECOVERED_SOURCE}"
-            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shadertoy/hot_reload_recovered.frag.spv"
+            OUTPUT "${shadertoy_probe_assets_dir}/hot_reload_recovered.frag.spv"
         )
         target_compile_definitions(shadertoy_probe PRIVATE
-            EUI_TEST_SHADERS_DIR="${CMAKE_CURRENT_BINARY_DIR}/shadertoy")
+            EUI_TEST_SHADERS_DIR="${shadertoy_probe_assets_dir}")
     endif()
 
     file(GLOB TEST_UNIT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/*.cpp")
