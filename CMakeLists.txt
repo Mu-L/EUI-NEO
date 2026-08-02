@@ -388,7 +388,7 @@ if(EUI_BUILD_APPS)
                     SOURCE "${shadertoy_demo_source}"
                     OUTPUT "${shadertoy_demo_spirv}")
                 if(EXISTS "${shadertoy_presets_dir}")
-                    foreach(preset_name IN ITEMS blackhole fish Rainforest)
+                    foreach(preset_name IN ITEMS blackhole fish)
                         string(TOLOWER "${preset_name}" preset_asset_name)
                         if(preset_name STREQUAL "blackhole")
                             set(preset_pass_count 5)

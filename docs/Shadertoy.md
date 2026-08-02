@@ -190,8 +190,8 @@ fragment、SPIR-V 和图片的相对路径都以该目录为基准。
 
 机器可读 schema 位于
 [`assets/shaders/shadertoy/eui-shadertoy.schema.json`](../assets/shaders/shadertoy/eui-shadertoy.schema.json)。
-importer 也可直接接受数组式 `config.json`。仓库内 Blackhole、Fish、
-Rainforest 副本使用语义等价的 EUI v1 形式，使同一批资源同时覆盖版本化公共 schema。
+importer 也可直接接受数组式 `config.json`。仓库内 Blackhole、Fish 副本使用语义等价的
+EUI v1 形式，使同一批资源同时覆盖版本化公共 schema。
 
 ## Uniform 契约
 
@@ -250,5 +250,5 @@ Shader 输出使用 straight alpha，并通过普通 UI image 路径应用圆角
 
 完整可运行示例位于
 [`examples/shadertoy.cpp`](../examples/shadertoy.cpp)，可切换 inline Demo 和内置的
-Blackhole、Fish、Rainforest。预设源码、图片、配置和 schema 都位于
+Blackhole、Fish。预设源码、图片、配置和 schema 都位于
 [`assets/shaders/shadertoy/`](../assets/shaders/shadertoy/)。

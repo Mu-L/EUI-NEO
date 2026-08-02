@@ -389,7 +389,7 @@ opacity、transform、交互和 dirty rect API。`fill()` 是布局填充，frag
 Cubemap、Volume、动态纹理、可配置 sampler、每 Pass 格式/分辨率明确不属于当前范围，
 也不是待办扩展。可执行示例
 [`examples/shadertoy.cpp`](../examples/shadertoy.cpp) 展示 inline Demo 与 Blackhole、
-Fish、Rainforest 内置预设切换。
+Fish 内置预设切换。
 
 ## Polygon DSL
 

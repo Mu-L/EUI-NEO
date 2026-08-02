@@ -13,7 +13,7 @@ namespace {
 bool paused = false;
 std::uint64_t resetKey = 0;
 
-enum class Preset { Demo, Blackhole, Fish, Rainforest };
+enum class Preset { Demo, Blackhole, Fish };
 
 Preset selectedPreset = Preset::Demo;
 std::string presetError;
@@ -42,7 +42,6 @@ const char* presetName(Preset preset) {
     case Preset::Demo: return "Demo";
     case Preset::Blackhole: return "blackhole";
     case Preset::Fish: return "fish";
-    case Preset::Rainforest: return "rainforest";
     }
     return "Demo";
 }
@@ -78,8 +77,8 @@ eui::ShaderToyGraph loadPreset(Preset preset) {
 }
 
 const eui::ShaderToyGraph& shaderGraph() {
-    static std::array<eui::ShaderToyGraph, 4> graphs;
-    static std::array<bool, 4> loaded{};
+    static std::array<eui::ShaderToyGraph, 3> graphs;
+    static std::array<bool, 3> loaded{};
     const std::size_t index = static_cast<std::size_t>(selectedPreset);
     if (!loaded[index]) {
         graphs[index] = loadPreset(selectedPreset);
@@ -98,7 +97,6 @@ std::string presetLabel(Preset preset) {
     const std::string name = presetName(preset);
     if (name == "blackhole") return "Blackhole";
     if (name == "fish") return "Fish";
-    if (name == "rainforest") return "Rainforest";
     return name;
 }
 
@@ -165,10 +163,10 @@ void compose(eui::Ui& ui, const eui::Screen& screen) {
 
     const float gap = 8.0f;
     const float presetWidth = std::max(
-        64.0f, (canvasWidth - gap * 3.0f) / 4.0f);
+        64.0f, (canvasWidth - gap * 2.0f) / 3.0f);
 
-    const std::array<Preset, 4> presets{
-        Preset::Demo, Preset::Blackhole, Preset::Fish, Preset::Rainforest};
+    const std::array<Preset, 3> presets{
+        Preset::Demo, Preset::Blackhole, Preset::Fish};
     for (std::size_t index = 0; index < presets.size(); ++index) {
         presetButton(ui, presets[index],
                      margin + static_cast<float>(index) * (presetWidth + gap),
