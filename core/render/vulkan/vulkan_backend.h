@@ -50,6 +50,7 @@ public:
                      const core::Color& tint,
                      const core::Rect& rect,
                      float radius,
+                     float blur,
                      int windowWidth,
                      int windowHeight) override;
     LayerHandle createLayer(int width, int height) override;
@@ -64,8 +65,23 @@ public:
                           const core::Rect& rect,
                           int windowWidth,
                           int windowHeight) override;
+    ShaderToyHandle createShaderToy(const ShaderToyGraph& graph, ShaderToyError* error) override;
+    TextureHandle renderShaderToy(ShaderToyHandle handle,
+                                  const ShaderToyGraph& graph,
+                                  int width,
+                                  int height,
+                                  const ShaderToyFrameData& frame,
+                                  bool paused,
+                                  bool reset,
+                                  ShaderToyError* error) override;
+    void destroyShaderToy(ShaderToyHandle handle) override;
+    bool readShaderToyPixel(ShaderToyHandle handle, float* rgba) override;
+    bool readShaderToyPixels(ShaderToyHandle handle,
+                             float* rgba,
+                             std::size_t floatCount) override;
 
 private:
+    struct ShaderToyResource;
     struct TextureResource {
         VkImage image = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
@@ -131,7 +147,9 @@ private:
                            int height,
                            VkFormat format,
                            VkImageUsageFlags usage);
-    bool ensureTextureSampler(TextureResource& texture);
+    bool ensureTextureSampler(
+        TextureResource& texture,
+        VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     bool ensureLayerResource(LayerResource& layer, int width, int height);
     void destroyLayerResource(LayerResource& layer);
     void releaseAllLayerFramebuffers();
@@ -167,6 +185,10 @@ private:
                                VkImage image,
                                VkImageLayout oldLayout,
                                VkImageLayout newLayout);
+    bool updateShaderToyTexture(TextureResource& texture,
+                                const unsigned char* pixels,
+                                int width,
+                                int height);
     VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) const;
     bool ensureRoundedRectPipeline();
     bool ensurePolygonPipeline();
@@ -199,6 +221,10 @@ private:
     void destroyTextureResource(TextureResource& texture);
     void releasePendingTextureDeletes();
     void releasePendingUploads();
+    void destroyShaderToyResource(ShaderToyResource& toy);
+    void releasePendingShaderToyPipelines();
+    void releasePendingShaderToys();
+    void releaseAllShaderToys();
     void transitionSwapchainImage(VkImageLayout newLayout);
     std::uint32_t findMemoryType(std::uint32_t filter, VkMemoryPropertyFlags properties) const;
 
@@ -301,6 +327,9 @@ private:
     UploadArena uploadArena_;
     std::vector<TextureResource*> pendingTextureDeletes_;
     std::vector<LayerResource*> layers_;
+    std::vector<ShaderToyResource*> shaderToys_;
+    std::vector<VkPipeline> pendingShaderToyPipelineDeletes_;
+    std::vector<ShaderToyResource*> pendingShaderToyDeletes_;
 
 };
 

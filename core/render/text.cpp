@@ -90,6 +90,7 @@ struct FontInfoHolder {
 };
 
 constexpr std::size_t kFontStackCacheCapacity = 16;
+constexpr std::size_t kTextSizeCacheCapacity = 1024;
 
 struct FontStackCacheEntry {
     std::shared_ptr<FontInfoHolder> holder;
@@ -106,10 +107,65 @@ FontStackCache& sharedFontStackCache() {
     return cache;
 }
 
+struct TextSizeCacheKey {
+    std::string text;
+    std::string fontFamily;
+    float fontSize = 0.0f;
+    float maxWidth = 0.0f;
+    float lineHeight = 0.0f;
+    int fontWeight = 0;
+    bool wrap = false;
+
+    bool operator==(const TextSizeCacheKey& other) const {
+        return text == other.text &&
+               fontFamily == other.fontFamily &&
+               fontSize == other.fontSize &&
+               maxWidth == other.maxWidth &&
+               lineHeight == other.lineHeight &&
+               fontWeight == other.fontWeight &&
+               wrap == other.wrap;
+    }
+};
+
+struct TextSizeCacheKeyHash {
+    std::size_t operator()(const TextSizeCacheKey& key) const {
+        std::size_t value = std::hash<std::string>{}(key.text);
+        const auto combine = [&](std::size_t part) {
+            value ^= part + 0x9e3779b9u + (value << 6u) + (value >> 2u);
+        };
+        combine(std::hash<std::string>{}(key.fontFamily));
+        combine(std::hash<float>{}(key.fontSize));
+        combine(std::hash<float>{}(key.maxWidth));
+        combine(std::hash<float>{}(key.lineHeight));
+        combine(std::hash<int>{}(key.fontWeight));
+        combine(std::hash<bool>{}(key.wrap));
+        return value;
+    }
+};
+
+struct TextSizeCacheEntry {
+    Vec2 size;
+    std::uint64_t lastUsed = 0;
+};
+
+struct TextSizeCache {
+    std::unordered_map<TextSizeCacheKey, TextSizeCacheEntry, TextSizeCacheKeyHash> entries;
+    std::uint64_t accessTick = 0;
+};
+
+TextSizeCache& sharedTextSizeCache() {
+    static TextSizeCache cache;
+    return cache;
+}
+
 void clearSharedFontStackCache() {
     FontStackCache& cache = sharedFontStackCache();
     cache.entries.clear();
     cache.accessTick = 0;
+
+    TextSizeCache& sizeCache = sharedTextSizeCache();
+    sizeCache.entries.clear();
+    sizeCache.accessTick = 0;
 }
 
 struct AtlasPage {
@@ -740,7 +796,11 @@ size_t findEmojiFaceForCodepoint(FontInfoHolder& holder, unsigned int codepoint,
     return findFaceForCodepoint(holder, codepoint, fontSize);
 }
 
-float loadGlyphAdvance(const FontFace& face, unsigned int glyphIndex, unsigned int codepoint, float fontSize) {
+float loadGlyphAdvance(const FontFace& face,
+                       unsigned int glyphIndex,
+                       unsigned int codepoint,
+                       float fontSize,
+                       float maxGlyphHeight) {
     if (codepoint == '\t') {
         return fontSize * 4.0f;
     }
@@ -751,16 +811,22 @@ float loadGlyphAdvance(const FontFace& face, unsigned int glyphIndex, unsigned i
         return fontSize * 0.5f;
     }
 
-    if (FT_IS_SCALABLE(face.face)) {
-        return static_cast<float>(face.face->glyph->linearHoriAdvance) / 65536.0f * face.glyphScale;
+    float glyphScale = face.glyphScale;
+    const float glyphHeight = static_cast<float>(face.face->glyph->metrics.height) / 64.0f;
+    if (face.colored && glyphHeight > 0.0f) {
+        glyphScale = std::min(glyphScale, maxGlyphHeight / glyphHeight);
     }
-    return static_cast<float>(face.face->glyph->advance.x) / 64.0f * face.glyphScale;
+    if (FT_IS_SCALABLE(face.face)) {
+        return static_cast<float>(face.face->glyph->linearHoriAdvance) / 65536.0f * glyphScale;
+    }
+    return static_cast<float>(face.face->glyph->advance.x) / 64.0f * glyphScale;
 }
 
 std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder,
                                                           const std::string& text,
                                                           float fontSize) {
     std::vector<TextPrimitive::ShapedGlyph> shaped;
+    const float maxGlyphHeight = holder.faces.front().ascent - holder.faces.front().descent;
     size_t index = 0;
     while (index < text.size()) {
         const size_t start = index;
@@ -771,7 +837,7 @@ std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder
             : findFaceForCodepoint(holder, codepoint, fontSize);
         const FontFace& face = holder.faces[faceIndex];
         const unsigned int glyphIndex = codepoint == '\t' ? 0 : FT_Get_Char_Index(face.face, codepoint);
-        const float advance = loadGlyphAdvance(face, glyphIndex, codepoint, fontSize);
+        const float advance = loadGlyphAdvance(face, glyphIndex, codepoint, fontSize, maxGlyphHeight);
         shaped.push_back({glyphIndex == 0 && codepoint == '\t' ? 0 : makeGlyphKey(faceIndex, glyphIndex),
                           codepoint,
                           static_cast<int>(start),
@@ -961,6 +1027,7 @@ struct TextPrimitive::Impl {
                                           const std::string& fontFamily = {},
                                           float fontSize = 16.0f,
                                           int fontWeight = 400);
+    static Vec2 measureTextSize(const TextStyle& style);
     static void setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile);
 
     void prepare();
@@ -1226,6 +1293,71 @@ TextPrimitive::TextMetrics TextPrimitive::Impl::measureTextMetrics(const std::st
     return makeTextMetrics(text, shapeTextWithFontStack(*holder, text, size));
 }
 
+Vec2 TextPrimitive::Impl::measureTextSize(const TextStyle& style) {
+    TextSizeCache& cache = sharedTextSizeCache();
+    TextSizeCacheKey cacheKey{
+        style.text,
+        style.fontFamily,
+        style.fontSize,
+        style.wrap ? style.maxWidth : 0.0f,
+        style.lineHeight,
+        style.fontWeight,
+        style.wrap
+    };
+    const auto cached = cache.entries.find(cacheKey);
+    if (cached != cache.entries.end()) {
+        cached->second.lastUsed = ++cache.accessTick;
+        return cached->second.size;
+    }
+
+    const float lineHeight = style.lineHeight > 0.0f ? style.lineHeight : style.fontSize * 1.2f;
+    const float maxWidth = style.wrap && style.maxWidth > 0.0f ? style.maxWidth : 0.0f;
+    float measuredWidth = 0.0f;
+    int lineCount = 0;
+
+    size_t paragraphStart = 0;
+    while (paragraphStart <= style.text.size()) {
+        const size_t newline = style.text.find('\n', paragraphStart);
+        const size_t paragraphEnd = newline == std::string::npos ? style.text.size() : newline;
+        std::string paragraph = style.text.substr(paragraphStart, paragraphEnd - paragraphStart);
+        if (!paragraph.empty() && paragraph.back() == '\r') {
+            paragraph.pop_back();
+        }
+
+        const TextMetrics metrics = measureTextMetrics(paragraph, style.fontFamily, style.fontSize, style.fontWeight);
+        float lineWidth = 0.0f;
+        ++lineCount;
+        for (size_t index = 1; index < metrics.caretX.size(); ++index) {
+            const float advance = metrics.caretX[index] - metrics.caretX[index - 1];
+            if (maxWidth > 0.0f && lineWidth > 0.0f && lineWidth + advance > maxWidth) {
+                measuredWidth = std::max(measuredWidth, lineWidth);
+                lineWidth = 0.0f;
+                ++lineCount;
+            }
+            lineWidth += advance;
+        }
+        measuredWidth = std::max(measuredWidth, lineWidth);
+
+        if (newline == std::string::npos) {
+            break;
+        }
+        paragraphStart = newline + 1;
+    }
+
+    const Vec2 measuredSize{measuredWidth, static_cast<float>(lineCount) * lineHeight};
+    if (cache.entries.size() >= kTextSizeCacheCapacity) {
+        const auto oldest = std::min_element(cache.entries.begin(), cache.entries.end(),
+                                             [](const auto& left, const auto& right) {
+                                                 return left.second.lastUsed < right.second.lastUsed;
+                                             });
+        if (oldest != cache.entries.end()) {
+            cache.entries.erase(oldest);
+        }
+    }
+    cache.entries.emplace(std::move(cacheKey), TextSizeCacheEntry{measuredSize, ++cache.accessTick});
+    return measuredSize;
+}
+
 void TextPrimitive::Impl::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
     if (defaultUiFontFileOverride() == textFontFile &&
         defaultIconFontFileOverride() == iconFontFile) {
@@ -1350,12 +1482,17 @@ bool TextPrimitive::Impl::ensureGlyph(const ShapedGlyph& shaped) {
 
     const FT_Bitmap& bitmap = slot->bitmap;
     const bool colorBitmap = bitmap.pixel_mode == FT_PIXEL_MODE_BGRA;
+    float glyphScale = face.glyphScale;
+    if (colorBitmap && bitmap.rows > 0) {
+        const float emHeight = ascent_ - descent_;
+        glyphScale = std::min(glyphScale, emHeight / static_cast<float>(bitmap.rows));
+    }
     glyph.colored = colorBitmap;
-    glyph.xOffset = static_cast<float>(slot->bitmap_left) * face.glyphScale;
-    glyph.yOffset = ascent_ - static_cast<float>(slot->bitmap_top) * face.glyphScale;
-    glyph.width = static_cast<float>(bitmap.width) * face.glyphScale;
-    glyph.height = static_cast<float>(bitmap.rows) * face.glyphScale;
-    if (colorBitmap && face.colored) {
+    glyph.xOffset = static_cast<float>(slot->bitmap_left) * glyphScale;
+    glyph.yOffset = ascent_ - static_cast<float>(slot->bitmap_top) * glyphScale;
+    glyph.width = static_cast<float>(bitmap.width) * glyphScale;
+    glyph.height = static_cast<float>(bitmap.rows) * glyphScale;
+    if (colorBitmap) {
         glyph.yOffset = ascent_ - descent_ - glyph.height;
     }
 
@@ -1368,8 +1505,10 @@ bool TextPrimitive::Impl::ensureGlyph(const ShapedGlyph& shaped) {
     SharedTextAtlas& atlas = sharedTextAtlas();
     AtlasPage& page = colorBitmap ? atlas.color : atlas.gray;
     if (const auto cached = page.glyphs.find(cacheKey); cached != page.glyphs.end()) {
-        glyph = cached->second;
-        glyph.advance = shaped.advance;
+        glyph.u0 = cached->second.u0;
+        glyph.v0 = cached->second.v0;
+        glyph.u1 = cached->second.u1;
+        glyph.v1 = cached->second.v1;
         cacheGlyph(shaped.key, glyph);
         return true;
     }
@@ -1487,6 +1626,16 @@ void TextPrimitive::Impl::invalidateVertices() {
 void TextPrimitive::Impl::rebuildVertices() {
     vertices_.clear();
     const float lineHeight = style_.lineHeight > 0.0f ? style_.lineHeight : style_.fontSize * 1.2f;
+    const auto close = [](float left, float right) {
+        return std::fabs(left - right) <= 0.0001f;
+    };
+    const bool pixelAlignedMatrix = hasTransformMatrix_ &&
+        close(transformMatrix_.m00, 1.0f) && close(transformMatrix_.m01, 0.0f) &&
+        close(transformMatrix_.m10, 0.0f) && close(transformMatrix_.m11, 1.0f) &&
+        close(transformMatrix_.px, 0.0f) && close(transformMatrix_.py, 0.0f) &&
+        close(transformMatrix_.pw, 1.0f) &&
+        close(transformMatrix_.tx, std::round(transformMatrix_.tx)) &&
+        close(transformMatrix_.ty, std::round(transformMatrix_.ty));
     float blockYOffset = 0.0f;
     if (style_.verticalAlign == VerticalAlign::Center) {
         float inkTop = std::numeric_limits<float>::max();
@@ -1572,6 +1721,15 @@ void TextPrimitive::Impl::rebuildVertices() {
                 p1 = scalePoint(p1);
                 p2 = scalePoint(p2);
                 p3 = scalePoint(p3);
+            }
+
+            if (!glyph.colored && pixelAlignedMatrix) {
+                const float offsetX = std::round(p0.x) - p0.x;
+                const float offsetY = std::round(p0.y) - p0.y;
+                p0 = {p0.x + offsetX, p0.y + offsetY};
+                p1 = {p1.x + offsetX, p1.y + offsetY};
+                p2 = {p2.x + offsetX, p2.y + offsetY};
+                p3 = {p3.x + offsetX, p3.y + offsetY};
             }
 
             vertices_.insert(vertices_.end(), {
@@ -1745,6 +1903,10 @@ TextPrimitive::TextMetrics TextPrimitive::measureTextMetrics(const std::string& 
                                                              float fontSize,
                                                              int fontWeight) {
     return Impl::measureTextMetrics(text, fontFamily, fontSize, fontWeight);
+}
+
+Vec2 TextPrimitive::measureTextSize(const TextStyle& style) {
+    return Impl::measureTextSize(style);
 }
 void TextPrimitive::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
     Impl::setDefaultFontFiles(textFontFile, iconFontFile);

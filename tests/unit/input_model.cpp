@@ -54,6 +54,20 @@ int main() {
         return 1;
     }
 
+    Model::InputState scrolledState;
+    scrolledState.text = "one\ntwo\nthree\nfour\nfive\nsix";
+    scrolledState.textRevision = 1;
+    scrolledState.cursor = static_cast<int>(scrolledState.text.size());
+    scrolledState.verticalScroll = 0.0f;
+    scrolledState.followCaret = false;
+    Model::InputLayout::build(
+        scrolledState, viewportWidth, fontSize * 2.0f, width, inset, inset,
+        fontSize, "monospace", fontSize, true);
+    if (scrolledState.verticalScroll != 0.0f) {
+        std::cerr << "Manual multiline scroll was overridden by caret following\n";
+        return 1;
+    }
+
     core::dsl::Ui ui;
     ui.begin("input.viewport");
     components::input(ui, "field")
