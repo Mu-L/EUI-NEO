@@ -18,6 +18,7 @@
 #endif
 
 #include "eui/app.h"
+#include "eui/detail/dsl_app_impl.h"
 #include "core/app/app_runner.h"
 #include "core/app/dsl_window_manager.h"
 #include "core/app/dsl_window_runtime.h"
@@ -38,6 +39,7 @@ namespace {
 
 struct WindowState : app::AppRunner {
     bool running = true;
+    bool hideToTrayRequested = false;
     core::render::RenderBackend* renderBackend = nullptr;
 #if defined(EUI_RENDER_BACKEND_OPENGL) && (defined(_WIN32) || defined(__APPLE__))
     // SDL2 can expose the OpenGL window before the drawable/backbuffer settles.
@@ -165,7 +167,9 @@ void hideToTray(SDL_Window* window, WindowState& state) {
     }
     SDL_HideWindow(window);
     state.hiddenToTray = true;
+    state.hideToTrayRequested = false;
     state.paintRequested = false;
+    state.resetTiming(core::window::timeSeconds());
 }
 
 void restoreFromTray(SDL_Window* window, WindowState& state) {
@@ -175,13 +179,15 @@ void restoreFromTray(SDL_Window* window, WindowState& state) {
     SDL_ShowWindow(window);
     SDL_RaiseWindow(window);
     state.hiddenToTray = false;
+    state.hideToTrayRequested = false;
     state.paintRequested = true;
     app::detail::requestFullPaint();
+    state.resetTiming(core::window::timeSeconds());
 }
 
-void requestClose(SDL_Window* window, WindowState& state) {
+void requestClose(WindowState& state) {
     if (state.trayAvailable) {
-        hideToTray(window, state);
+        state.hideToTrayRequested = true;
     } else {
         state.running = false;
     }
@@ -189,7 +195,7 @@ void requestClose(SDL_Window* window, WindowState& state) {
 
 void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& event, bool inputEnabled) {
     if (event.type == SDL_QUIT) {
-        requestClose(window, state);
+        requestClose(state);
         return;
     }
     if (event.type == SDL_TEXTINPUT) {
@@ -232,7 +238,9 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
     if (event.type == SDL_WINDOWEVENT) {
         switch (event.window.event) {
         case SDL_WINDOWEVENT_CLOSE:
-            requestClose(window, state);
+            if (inputEnabled) {
+                requestClose(state);
+            }
             break;
         case SDL_WINDOWEVENT_MINIMIZED:
             break;
@@ -485,6 +493,7 @@ int main() {
             if (SDL_WaitEventTimeout(&event, 100)) {
                 processMainEvent(window, state, event, true);
             }
+            state.resetTiming(core::window::timeSeconds());
             continue;
         }
 
@@ -537,6 +546,12 @@ int main() {
             }
         }
         pruneClosedWindows(childWindows);
+        if (state.hideToTrayRequested && !childWindows.empty()) {
+            state.hideToTrayRequested = false;
+        }
+        if (state.hideToTrayRequested) {
+            hideToTray(window, state);
+        }
         if (!state.running || state.hiddenToTray) {
             continue;
         }

@@ -2,10 +2,17 @@
 #include "core/render/render_backend.h"
 #include "core/window/window_backend.h"
 
+#if defined(EUI_WINDOW_BACKEND_SDL2)
+#ifndef SDL_MAIN_HANDLED
+#define SDL_MAIN_HANDLED
+#endif
+#include <SDL.h>
+#else
 #ifndef GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_NONE
 #endif
 #include <GLFW/glfw3.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -14,6 +21,23 @@
 #include <vector>
 
 namespace {
+
+bool initializeWindowSystem() {
+#if defined(EUI_WINDOW_BACKEND_SDL2)
+    SDL_SetMainReady();
+    return SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == 0;
+#else
+    return glfwInit() == GLFW_TRUE;
+#endif
+}
+
+void shutdownWindowSystem() {
+#if defined(EUI_WINDOW_BACKEND_SDL2)
+    SDL_Quit();
+#else
+    glfwTerminate();
+#endif
+}
 
 bool near(float value, float expected, float tolerance = 0.01f) {
     return std::fabs(value - expected) <= tolerance;
@@ -328,7 +352,7 @@ bool retainedLayerBlocker(core::window::Handle window) {
 
 int main() {
     if (!layoutParticipation()) return 1;
-    if (!glfwInit()) return 2;
+    if (!initializeWindowSystem()) return 2;
     core::window::WindowCreateRequest request;
     request.width = 200;
     request.height = 200;
@@ -336,13 +360,13 @@ int main() {
     request.renderApi = core::render::windowRenderApi();
     core::window::Handle window = core::window::createWindow(request);
     if (window == nullptr) {
-        glfwTerminate();
+        shutdownWindowSystem();
         return 3;
     }
     const bool runtimeOk = runtimeFrameAndComposition(window);
     const bool retainedOk = retainedLayerBlocker(window);
     const bool lifecycleOk = repeatedLifecycle(window);
     core::window::destroyWindow(window);
-    glfwTerminate();
+    shutdownWindowSystem();
     return runtimeOk && retainedOk && lifecycleOk ? 0 : 4;
 }

@@ -12,9 +12,7 @@
 #include "core/runtime/runtime_geometry.h"
 #include "core/runtime/runtime_hit_test.h"
 #include "core/runtime/runtime_instances.h"
-#include "core/runtime/runtime_render_helpers.h"
 #include "core/runtime/runtime_state_bindings.h"
-#include "core/runtime/runtime_tree.h"
 #include "core/window/window_backend.h"
 
 #include <algorithm>

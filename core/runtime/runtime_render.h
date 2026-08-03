@@ -2,11 +2,27 @@
 
 namespace core::dsl {
 
+inline void applyOptionalScissor(core::render::RenderBackend& renderBackend,
+                                 bool enabled,
+                                 const Rect& rect,
+                                 int windowHeight) {
+    renderBackend.setScissor(enabled, rect, windowHeight);
+}
+
+inline std::vector<Vec2> scaledPolygonPoints(const std::vector<Vec2>& points, float dpiScale) {
+    std::vector<Vec2> result;
+    result.reserve(points.size());
+    for (const Vec2& point : points) {
+        result.push_back({toPixels(point.x, dpiScale), toPixels(point.y, dpiScale)});
+    }
+    return result;
+}
+
 inline void Runtime::renderDirect(core::render::RenderBackend& renderBackend, int windowWidth, int windowHeight, float dpiScale, const Rect* dirtyRect) {
     const RenderTransform identity;
     const bool hasScissor = dirtyRect != nullptr;
     const Rect scissor = dirtyRect ? *dirtyRect : Rect{};
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (const Element* root : roots) {
         prepareTextElement(*root, windowWidth, windowHeight, dpiScale, identity, dirtyRect, hasScissor, scissor);
     }
@@ -74,7 +90,7 @@ inline void Runtime::prepareTextElement(
         }
     }
 
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (const Element* child : children) {
         prepareTextElement(*child, windowWidth, windowHeight, dpiScale, renderTransform, dirtyRect, effectiveHasScissor, effectiveScissor);
     }
@@ -201,7 +217,7 @@ inline void Runtime::renderElementChildren(
     const Rect* dirtyRect,
     bool hasScissor,
     const Rect& scissorRect) {
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (const Element* child : children) {
         const bool mayUseRetainedLayer =
             !child->orderedChildren.empty() &&
@@ -290,7 +306,7 @@ inline std::uint64_t Runtime::retainedLayerSignature(const Element& element,
     seed = mix(seed, quant(bounds.subtree.height));
     seed = mix(seed, quant(dpiScale));
     seed = retainedElementPaintSignature(element, seed);
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     seed = mix(seed, static_cast<std::uint64_t>(children.size()));
     for (const Element* child : children) {
         const auto childBounds = paintBounds_.find(child->id);

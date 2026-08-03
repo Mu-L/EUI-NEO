@@ -25,5 +25,8 @@ void destroyCursor(CursorHandle cursor);
 
 void setWindowIcon(Handle window, int width, int height, unsigned char* pixels);
 void setImeCursorRect(Handle window, float x, float y, float width, float height);
+void installInputCallbacks(Handle window);
+void uninstallInputCallbacks(Handle window);
+bool queryImeComposition(Handle window, std::string& text, bool& composing);
 
 } // namespace core::window

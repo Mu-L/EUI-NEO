@@ -7,7 +7,7 @@ inline bool Runtime::initialize() {
 }
 
 inline bool Runtime::initialize(core::window::Handle window) {
-    installInputCallbacks(window);
+    core::window::installInputCallbacks(window);
     return true;
 }
 
@@ -236,7 +236,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale) {
     ImagePrimitive::beginRenderFrame();
 
     const RenderTransform identity;
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (const Element* root : roots) {
         prepareTextElement(*root, windowWidth, windowHeight, dpiScale, identity);
     }

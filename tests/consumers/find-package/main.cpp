@@ -1,5 +1,7 @@
 #include "eui_neo.h"
 
+bool publicHeaderCompanionIsLinked();
+
 namespace app {
 
 const DslAppConfig& dslAppConfig() {
@@ -27,5 +29,5 @@ int main() {
     const bool jsonOk = document.parse(R"({"value":"installed"})") &&
                         document.root().get("value").string(value) &&
                         value == "installed";
-    return color.r > 0.5f && jsonOk ? 0 : 1;
+    return color.r > 0.5f && jsonOk && publicHeaderCompanionIsLinked() ? 0 : 1;
 }

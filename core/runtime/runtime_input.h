@@ -18,7 +18,7 @@ inline bool Runtime::isElementInDisabledTree(const std::string& id) const {
 
     bool disabledTree = false;
     const std::string resolvedId = ui_.resolveId(id);
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (const Element* root : roots) {
         if (findElementDisabledState(*root, resolvedId, false, disabledTree)) {
             return disabledTree;
@@ -55,7 +55,7 @@ inline std::string Runtime::hitTestInteractive(const PointerEvent& event, float 
 inline std::string Runtime::hitTestFocusable(const PointerEvent& event, float dpiScale) const {
     std::string targetId;
     const RenderTransform identity;
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (auto it = roots.rbegin(); it != roots.rend(); ++it) {
         if (hitTestFocusableElement(**it, event, dpiScale, identity, false, {}, false, targetId)) {
             break;
@@ -115,7 +115,7 @@ template <typename Predicate>
 inline std::string Runtime::hitTest(const PointerEvent& event, float dpiScale, Predicate&& predicate) const {
     std::string targetId;
     const RenderTransform identity;
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (auto it = roots.rbegin(); it != roots.rend(); ++it) {
         if (hitTestElement(**it, event, dpiScale, identity, predicate, false, {}, false, targetId)) {
             break;
@@ -156,7 +156,7 @@ inline bool Runtime::hitTestElement(
         return false;
     }
 
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (auto it = children.rbegin(); it != children.rend(); ++it) {
         if (hitTestElement(**it, event, dpiScale, renderTransform, predicate, effectiveHasClip, effectiveClip, disabledTree, targetId)) {
             return true;
@@ -200,7 +200,7 @@ inline bool Runtime::hitTestFocusableElement(
         return false;
     }
 
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (auto it = children.rbegin(); it != children.rend(); ++it) {
         if (hitTestFocusableElement(**it, event, dpiScale, renderTransform, effectiveHasClip, effectiveClip, disabledTree, targetId)) {
             return true;

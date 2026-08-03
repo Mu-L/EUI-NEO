@@ -164,6 +164,7 @@ set(CORE_SOURCES
     core/render/text.cpp
     core/platform/tray_bridge.c
     core/window/window_backend.cpp
+    core/window/window_input_backend.cpp
 )
 
 if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "opengl")
@@ -298,6 +299,7 @@ endif()
 # -----------------------------------------------------------------------------
 
 set(EUI_APP_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+set(EUI_APP_RUNTIME_DIR "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}")
 set(EUI_SHADERTOY_RUNTIME_ASSET_DIR "assets/shaders/shadertoy")
 
 set(APP_ICON_RESOURCE)
@@ -363,22 +365,25 @@ if(EUI_BUILD_APPS)
     file(GLOB APP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp")
     foreach(app_source ${APP_SOURCES})
         get_filename_component(app_name "${app_source}" NAME_WE)
-        if(app_name STREQUAL "keyboard" AND
-           (NOT EUI_ENABLE_MODULES OR NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules/keyboard/keyboard.h"))
+        if(app_name STREQUAL "keyboard" AND NOT TARGET eui::module_keyboard)
             message(STATUS "Skipping keyboard example because the keyboard module is not available.")
+            continue()
+        endif()
+        if(app_name STREQUAL "serial_tool" AND NOT TARGET eui::module_serial)
+            message(STATUS "Skipping serial_tool example because the serial module is not available.")
             continue()
         endif()
         add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} "${app_source}" ${APP_ICON_RESOURCE})
         eui_neo_configure_app(${app_name})
         if(app_name STREQUAL "shadertoy")
             set(shadertoy_demo_spirv
-                "${CMAKE_CURRENT_BINARY_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag.spv")
+                "${EUI_APP_RUNTIME_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag.spv")
             set(shadertoy_demo_source
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/shadertoy/demo.frag")
             set(shadertoy_presets_dir
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/shadertoy")
             set(shadertoy_preset_spirv_dir
-                "${CMAKE_CURRENT_BINARY_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}")
+                "${EUI_APP_RUNTIME_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}")
             target_compile_definitions(shadertoy PRIVATE
                 EUI_SHADERTOY_DEMO_SOURCE="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag"
                 EUI_SHADERTOY_DEMO_SPIRV="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag.spv"
@@ -407,7 +412,7 @@ if(EUI_BUILD_APPS)
         endif()
         if(app_name STREQUAL "gallery")
             set(gallery_shadertoy_spirv
-                "${CMAKE_CURRENT_BINARY_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/gallery_demo.frag.spv")
+                "${EUI_APP_RUNTIME_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/gallery_demo.frag.spv")
             target_compile_definitions(gallery PRIVATE
                 EUI_GALLERY_SHADERTOY_SOURCE="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag"
                 EUI_GALLERY_SHADERTOY_NOISE="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/blackhole/color_noise.png"
@@ -418,8 +423,9 @@ if(EUI_BUILD_APPS)
                     OUTPUT "${gallery_shadertoy_spirv}")
             endif()
         endif()
-        if(app_name STREQUAL "serial_tool" AND
-           EUI_ENABLE_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules/serial/serial.h")
+        if(app_name STREQUAL "keyboard")
+            target_link_libraries(${app_name} PRIVATE eui::module_keyboard)
+        elseif(app_name STREQUAL "serial_tool")
             target_link_libraries(${app_name} PRIVATE eui::module_serial)
         endif()
     endforeach()
@@ -443,7 +449,9 @@ if(EUI_BUILD_USER_APPS)
         if(TARGET ${app_name})
             message(FATAL_ERROR "Duplicate EUI app target name '${app_name}'. Rename one app source or folder.")
         endif()
-        add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} "${app_source}" ${APP_ICON_RESOURCE})
+        file(GLOB_RECURSE app_local_sources CONFIGURE_DEPENDS "${app_dir}/*.cpp")
+        list(SORT app_local_sources)
+        add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} ${app_local_sources} ${APP_ICON_RESOURCE})
         target_include_directories(${app_name} PRIVATE "${app_dir}")
         eui_neo_configure_app(${app_name})
         eui_neo_copy_app_assets(${app_name} "${app_dir}/assets")
@@ -588,9 +596,10 @@ if(EUI_ENABLE_INSTALL)
     install(DIRECTORY include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "*.h"
+        PATTERN "detail" EXCLUDE
     )
     set(EUI_NEO_INSTALL_HEADER_DIRS components core)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules")
+    if(EUI_ENABLE_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules")
         list(APPEND EUI_NEO_INSTALL_HEADER_DIRS modules)
     endif()
     install(DIRECTORY ${EUI_NEO_INSTALL_HEADER_DIRS}
@@ -659,6 +668,7 @@ set(EUI_NEO_RENDER_BACKEND "@EUI_RESOLVED_RENDER_BACKEND@")
 set(EUI_NEO_BUILD_SHARED @EUI_BUILD_SHARED@)
 set(EUI_NEO_DEPS_MODE "@EUI_DEPS_MODE@")
 set(EUI_NEO_ENABLE_MARKDOWN @EUI_ENABLE_MARKDOWN@)
+set(EUI_NEO_ENABLE_MODULES @EUI_ENABLE_MODULES@)
 
 find_dependency(Threads)
 

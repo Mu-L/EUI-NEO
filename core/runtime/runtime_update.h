@@ -35,7 +35,7 @@ inline void Runtime::promoteBackdropBlurDirtyRegions(float dpiScale) {
     const RenderTransform identity;
     do {
         expandedThisPass = false;
-        const std::vector<const Element*>& roots = orderedElements(ui_);
+        const std::vector<const Element*>& roots = ui_.orderedRoots();
         for (const Element* root : roots) {
             expandBackdropBlurDirtyRegions(*root, dpiScale, identity, mergedDirty, expandedThisPass);
         }
@@ -77,7 +77,7 @@ inline void Runtime::expandBackdropBlurDirtyRegions(
         }
     }
 
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (const Element* child : children) {
         expandBackdropBlurDirtyRegions(*child, dpiScale, renderTransform, mergedDirty, expanded);
     }
@@ -192,7 +192,7 @@ inline void Runtime::updateDependentVisualDirtyRegions(float dpiScale) {
     }
 
     const RenderTransform identity;
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (const Element* root : roots) {
         updateDependentVisualDirtyRegions(*root, dpiScale, identity);
     }
@@ -240,7 +240,7 @@ inline void Runtime::updateDependentVisualDirtyRegions(
     }
 
     const RenderTransform renderTransform = resolveRenderTransform(element, dpiScale, inheritedTransform);
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (const Element* child : children) {
         updateDependentVisualDirtyRegions(*child, dpiScale, renderTransform);
     }
@@ -248,7 +248,7 @@ inline void Runtime::updateDependentVisualDirtyRegions(
 
 template <typename Fn>
 inline void Runtime::forEachElement(Fn&& fn) const {
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (const Element* root : roots) {
         forEachElement(*root, fn);
     }
@@ -257,7 +257,7 @@ inline void Runtime::forEachElement(Fn&& fn) const {
 template <typename Fn>
 inline void Runtime::forEachElement(const Element& element, Fn&& fn) {
     fn(element);
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (const Element* child : children) {
         forEachElement(*child, fn);
     }
@@ -809,7 +809,7 @@ inline void Runtime::updateElementTree(
     runtime::markEntriesUnseen(paintBounds_);
     focusedElementRenderTransformValid_ = false;
     const RenderTransform identity;
-    const std::vector<const Element*>& roots = orderedElements(ui_);
+    const std::vector<const Element*>& roots = ui_.orderedRoots();
     for (const Element* root : roots) {
         updateElementTree(*root, event, deltaSeconds, dpiScale, hoverTargetId, identity, false, false);
     }
@@ -880,7 +880,7 @@ inline runtime::PaintBoundsInstance Runtime::updateElementTree(
         bounds.drawCost = bounds.hasOwn ? 1 : 0;
     }
 
-    const std::vector<const Element*>& children = orderedElements(element);
+    const std::vector<const Element*>& children = element.orderedChildren;
     for (const Element* child : children) {
         const runtime::PaintBoundsInstance childBounds =
             updateElementTree(*child, event, deltaSeconds, dpiScale, hoverTargetId, renderTransform, childAncestorFrameChanged, disabledTree);
