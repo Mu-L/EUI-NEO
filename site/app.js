@@ -192,6 +192,19 @@ const docs = [
     tags: "retained layer cache static subtree opengl vulkan framebuffer texture"
   },
   {
+    category: "rendering",
+    href: "../docs/Shadertoy.md",
+    zh: {
+      title: "Shadertoy 底层图元",
+      desc: "Pass graph、通道、uniform、预设以及 OpenGL / Vulkan 双后端契约。"
+    },
+    en: {
+      title: "Shadertoy Primitive",
+      desc: "Pass graphs, channels, uniforms, presets, and the shared OpenGL / Vulkan contract."
+    },
+    tags: "shadertoy shader graph pass channel uniform opengl vulkan"
+  },
+  {
     category: "platform",
     href: "../docs/事件.md",
     zh: {
@@ -468,7 +481,7 @@ async function openReader(doc) {
       throw new Error(`HTTP ${response.status}`);
     }
     const markdown = await response.text();
-    readerBody.innerHTML = renderMarkdown(markdown);
+    readerBody.innerHTML = renderMarkdown(markdown, doc.href);
   } catch (error) {
     readerBody.innerHTML = `<p>${escapeHtml(t("reader.error"))}</p>`;
   }
@@ -480,7 +493,7 @@ function closeReader() {
   document.body.classList.remove("reader-open");
 }
 
-function renderMarkdown(markdown) {
+function renderMarkdown(markdown, sourceHref) {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   let html = "";
   let inCode = false;
@@ -528,7 +541,7 @@ function renderMarkdown(markdown) {
       closeList();
       const headers = splitMarkdownTableRow(line);
       html += "<div class=\"table-scroll\"><table><thead><tr>";
-      html += headers.map((cell) => `<th>${inlineMarkdown(cell)}</th>`).join("");
+      html += headers.map((cell) => `<th>${inlineMarkdown(cell, sourceHref)}</th>`).join("");
       html += "</tr></thead><tbody>";
       inTable = true;
       index += 1;
@@ -537,7 +550,7 @@ function renderMarkdown(markdown) {
     if (inTable && isMarkdownTableRow(line)) {
       const cells = splitMarkdownTableRow(line);
       html += "<tr>";
-      html += cells.map((cell) => `<td>${inlineMarkdown(cell)}</td>`).join("");
+      html += cells.map((cell) => `<td>${inlineMarkdown(cell, sourceHref)}</td>`).join("");
       html += "</tr>";
       continue;
     }
@@ -546,7 +559,7 @@ function renderMarkdown(markdown) {
     if (heading) {
       closeList();
       const level = heading[1].length;
-      html += `<h${level}>${inlineMarkdown(heading[2])}</h${level}>`;
+      html += `<h${level}>${inlineMarkdown(heading[2], sourceHref)}</h${level}>`;
       continue;
     }
     const bullet = line.match(/^\s*[-*]\s+(.+)$/);
@@ -555,11 +568,11 @@ function renderMarkdown(markdown) {
         html += "<ul>";
         listOpen = true;
       }
-      html += `<li>${inlineMarkdown(bullet[1])}</li>`;
+      html += `<li>${inlineMarkdown(bullet[1], sourceHref)}</li>`;
       continue;
     }
     closeList();
-    html += `<p>${inlineMarkdown(line)}</p>`;
+    html += `<p>${inlineMarkdown(line, sourceHref)}</p>`;
   }
   closeList();
   closeTable();
@@ -586,11 +599,27 @@ function splitMarkdownTableRow(line) {
   return trimmed.split("|").map((cell) => cell.trim());
 }
 
-function inlineMarkdown(value) {
+function inlineMarkdown(value, sourceHref) {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) =>
+      `<a href="${escapeHtml(resolveMarkdownHref(href, sourceHref))}">${label}</a>`);
+}
+
+function resolveMarkdownHref(href, sourceHref) {
+  try {
+    const sourceUrl = new URL(sourceHref, window.location.href);
+    return new URL(href, sourceUrl).href;
+  } catch (error) {
+    return href;
+  }
+}
+
+function findDocumentByHref(href) {
+  const targetUrl = new URL(href, window.location.href);
+  return docs.find((doc) =>
+    new URL(doc.href, window.location.href).href === targetUrl.href);
 }
 
 function categoryLabel(value) {
@@ -630,6 +659,18 @@ themeButton.addEventListener("click", () => {
 
 document.querySelectorAll("[data-close-reader]").forEach((node) => {
   node.addEventListener("click", closeReader);
+});
+
+readerBody.addEventListener("click", (event) => {
+  const link = event.target.closest("a");
+  if (!link) {
+    return;
+  }
+  const doc = findDocumentByHref(link.href);
+  if (doc) {
+    event.preventDefault();
+    openReader(doc);
+  }
 });
 
 window.addEventListener("keydown", (event) => {
