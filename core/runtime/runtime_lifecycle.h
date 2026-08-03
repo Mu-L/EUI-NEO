@@ -76,9 +76,9 @@ inline bool Runtime::update(core::window::Handle window, float deltaSeconds, flo
     composeRequested_ = false;
     wantsHandCursor_ = false;
     if (pruneInstancesRequested_) {
-        markInstancesUnseen();
+        instances_.markInstancesUnseen();
     }
-    markTimersUnseen();
+    instances_.markTimersUnseen();
     if (ImagePrimitive::consumeRemoteImageReady()) {
         fullPaintRequested_ = true;
         paintRequested_ = true;
@@ -102,13 +102,13 @@ inline bool Runtime::update(core::window::Handle window, float deltaSeconds, flo
     if (keyboardEvent.hasInput()) {
         updateTextInput(keyboardEvent);
     }
-    releaseUnseenTimers();
+    instances_.releaseUnseenTimers();
     updateImeCursorRect(window, dpiScale);
     applyCursor(window);
 
     promoteBackdropBlurDirtyRegions(dpiScale);
     if (pruneInstancesRequested_) {
-        releaseUnseenInstances();
+        instances_.releaseUnseenInstances();
         pruneInstancesRequested_ = false;
     }
     fullTreeUpdateRequested_ = false;
@@ -160,7 +160,8 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
         ++stats.clearCalls;
         renderBackend->clear(clearColor);
         ++stats.renderDirectPasses;
-        renderDirect(*renderBackend, windowWidth, windowHeight, dpiScale);
+        RuntimeRenderer(ui_, instances_).renderDirect(
+            *renderBackend, windowWidth, windowHeight, dpiScale);
         dirtyRects_.clear();
         fullPaintRequested_ = false;
         core::render::publishRenderFrameStats();
@@ -202,14 +203,16 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
         ++stats.clearCalls;
         renderBackend->clear(clearColor);
         ++stats.renderDirectPasses;
-        renderDirect(*renderBackend, windowWidth, windowHeight, dpiScale);
+        RuntimeRenderer(ui_, instances_).renderDirect(
+            *renderBackend, windowWidth, windowHeight, dpiScale);
     } else {
         for (const Rect& dirty : dirtyRects) {
             renderBackend->setScissor(true, dirty, windowHeight);
             ++stats.clearCalls;
             renderBackend->clear(clearColor);
             ++stats.renderDirectPasses;
-            renderDirect(*renderBackend, windowWidth, windowHeight, dpiScale, &dirty);
+            RuntimeRenderer(ui_, instances_).renderDirect(
+                *renderBackend, windowWidth, windowHeight, dpiScale, &dirty);
         }
         renderBackend->setScissor(false, {}, windowHeight);
     }
@@ -235,82 +238,20 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale) {
 
     ImagePrimitive::beginRenderFrame();
 
-    const RenderTransform identity;
-    const std::vector<const Element*>& roots = ui_.orderedRoots();
-    for (const Element* root : roots) {
-        prepareTextElement(*root, windowWidth, windowHeight, dpiScale, identity);
-    }
-    for (const Element* root : roots) {
-        renderElement(*renderBackend, *root, windowWidth, windowHeight, dpiScale, identity);
-    }
+    RuntimeRenderer(ui_, instances_).renderDirect(
+        *renderBackend, windowWidth, windowHeight, dpiScale);
 }
 
 inline void Runtime::shutdown(bool releaseCachedImageTextures) {
     releaseGraphicsResources(releaseCachedImageTextures);
-    rects_.clear();
-    polygons_.clear();
-    texts_.clear();
-    images_.clear();
-    shaderToys_.clear();
-    interactions_.clear();
-    dirtyKeys_.clear();
-    layouts_.clear();
-    scrollStates_.clear();
-    sliderStates_.clear();
-    timers_.clear();
-    dependentVisualStates_.clear();
-    frameTargets_.clear();
-    paintBounds_.clear();
-    retainedLayers_.clear();
+    instances_.clear();
     elementStructure_.clear();
     hoverTargetCacheValid_ = false;
     ui_.clearState();
 }
 
 inline void Runtime::releaseGraphicsResources(bool releaseCachedImageTextures) {
-    for (auto& item : rects_) {
-        if (item.second.initialized) {
-            item.second.primitive->destroy();
-            item.second.initialized = false;
-        }
-    }
-    for (auto& item : polygons_) {
-        if (item.second.initialized) {
-            item.second.primitive->destroy();
-            item.second.initialized = false;
-        }
-    }
-    for (auto& item : texts_) {
-        if (item.second.initialized) {
-            item.second.primitive->destroy();
-            item.second.initialized = false;
-        }
-    }
-    for (auto& item : images_) {
-        if (item.second.initialized) {
-            item.second.primitive->destroy();
-            item.second.initialized = false;
-        }
-    }
-    for (auto& item : shaderToys_) {
-        if (item.second.initialized) {
-            item.second.primitive->destroy();
-            item.second.initialized = false;
-        }
-    }
-    if (releaseCachedImageTextures) {
-        ImagePrimitive::releaseCachedTextures();
-    }
-    core::render::RenderBackend* renderBackend = core::render::activeRenderBackend();
-    if (renderBackend != nullptr) {
-        for (auto& item : retainedLayers_) {
-            if (item.second.handle != nullptr) {
-                renderBackend->destroyLayer(item.second.handle);
-                item.second.handle = nullptr;
-            }
-            item.second.valid = false;
-        }
-    }
+    instances_.releaseGraphicsResources(releaseCachedImageTextures);
     destroyCursors();
     fullPaintRequested_ = true;
     paintRequested_ = true;

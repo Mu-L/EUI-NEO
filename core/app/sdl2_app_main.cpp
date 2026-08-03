@@ -230,7 +230,9 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
         const bool shift = (event.key.keysym.mod & KMOD_SHIFT) != 0;
         core::InputKey key;
         if (mapKey(event.key.keysym.sym, key)) {
-            core::queueKeyInput(window, key, ctrl, shift);
+            const core::KeyAction action =
+                event.key.repeat != 0 ? core::KeyAction::Repeat : core::KeyAction::Press;
+            core::queueKeyInput(window, {key, action, {ctrl, shift}});
             state.paintRequested = true;
         }
         return;
@@ -373,7 +375,9 @@ void processManagedEvent(ManagedWindow& managed, const SDL_Event& event) {
         const bool shift = (event.key.keysym.mod & KMOD_SHIFT) != 0;
         core::InputKey key;
         if (mapKey(event.key.keysym.sym, key)) {
-            core::queueKeyInput(managed.window, key, ctrl, shift);
+            const core::KeyAction action =
+                event.key.repeat != 0 ? core::KeyAction::Repeat : core::KeyAction::Press;
+            core::queueKeyInput(managed.window, {key, action, {ctrl, shift}});
             managed.content.requestPaint();
         }
         return;

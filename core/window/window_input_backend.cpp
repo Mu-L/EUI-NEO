@@ -48,25 +48,30 @@ void installInputCallbacks(Handle window) {
 
         const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0 || (mods & GLFW_MOD_SUPER) != 0;
         const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
+        const core::KeyAction keyAction =
+            action == GLFW_REPEAT ? core::KeyAction::Repeat : core::KeyAction::Press;
+        const auto queueKey = [&](core::InputKey inputKey) {
+            core::queueKeyInput(currentWindow, {inputKey, keyAction, {ctrl, shift}});
+        };
         core::detail::setComposing(currentWindow, eui_ime_is_composing(currentWindow) != 0);
         switch (key) {
-        case GLFW_KEY_BACKSPACE: core::queueKeyInput(currentWindow, core::InputKey::Backspace, ctrl, shift); break;
-        case GLFW_KEY_DELETE: core::queueKeyInput(currentWindow, core::InputKey::Delete, ctrl, shift); break;
+        case GLFW_KEY_BACKSPACE: queueKey(core::InputKey::Backspace); break;
+        case GLFW_KEY_DELETE: queueKey(core::InputKey::Delete); break;
         case GLFW_KEY_ENTER:
-        case GLFW_KEY_KP_ENTER: core::queueKeyInput(currentWindow, core::InputKey::Enter, ctrl, shift); break;
-        case GLFW_KEY_LEFT: core::queueKeyInput(currentWindow, core::InputKey::Left, ctrl, shift); break;
-        case GLFW_KEY_RIGHT: core::queueKeyInput(currentWindow, core::InputKey::Right, ctrl, shift); break;
-        case GLFW_KEY_UP: core::queueKeyInput(currentWindow, core::InputKey::Up, ctrl, shift); break;
-        case GLFW_KEY_DOWN: core::queueKeyInput(currentWindow, core::InputKey::Down, ctrl, shift); break;
-        case GLFW_KEY_HOME: core::queueKeyInput(currentWindow, core::InputKey::Home, ctrl, shift); break;
-        case GLFW_KEY_END: core::queueKeyInput(currentWindow, core::InputKey::End, ctrl, shift); break;
-        case GLFW_KEY_ESCAPE: core::queueKeyInput(currentWindow, core::InputKey::Escape, ctrl, shift); break;
-        case GLFW_KEY_A: core::queueKeyInput(currentWindow, core::InputKey::A, ctrl, shift); break;
-        case GLFW_KEY_C: core::queueKeyInput(currentWindow, core::InputKey::C, ctrl, shift); break;
-        case GLFW_KEY_V: core::queueKeyInput(currentWindow, core::InputKey::V, ctrl, shift); break;
-        case GLFW_KEY_X: core::queueKeyInput(currentWindow, core::InputKey::X, ctrl, shift); break;
-        case GLFW_KEY_Y: core::queueKeyInput(currentWindow, core::InputKey::Y, ctrl, shift); break;
-        case GLFW_KEY_Z: core::queueKeyInput(currentWindow, core::InputKey::Z, ctrl, shift); break;
+        case GLFW_KEY_KP_ENTER: queueKey(core::InputKey::Enter); break;
+        case GLFW_KEY_LEFT: queueKey(core::InputKey::Left); break;
+        case GLFW_KEY_RIGHT: queueKey(core::InputKey::Right); break;
+        case GLFW_KEY_UP: queueKey(core::InputKey::Up); break;
+        case GLFW_KEY_DOWN: queueKey(core::InputKey::Down); break;
+        case GLFW_KEY_HOME: queueKey(core::InputKey::Home); break;
+        case GLFW_KEY_END: queueKey(core::InputKey::End); break;
+        case GLFW_KEY_ESCAPE: queueKey(core::InputKey::Escape); break;
+        case GLFW_KEY_A: queueKey(core::InputKey::A); break;
+        case GLFW_KEY_C: queueKey(core::InputKey::C); break;
+        case GLFW_KEY_V: queueKey(core::InputKey::V); break;
+        case GLFW_KEY_X: queueKey(core::InputKey::X); break;
+        case GLFW_KEY_Y: queueKey(core::InputKey::Y); break;
+        case GLFW_KEY_Z: queueKey(core::InputKey::Z); break;
         default: break;
         }
     });

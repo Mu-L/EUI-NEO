@@ -2,6 +2,112 @@
 
 namespace core::dsl {
 
+class RuntimeRenderer {
+public:
+    RuntimeRenderer(Ui& ui, runtime::InstanceStore& instances)
+        : ui_(ui), instances_(instances) {}
+
+    void renderDirect(core::render::RenderBackend& renderBackend,
+                      int windowWidth,
+                      int windowHeight,
+                      float dpiScale,
+                      const Rect* dirtyRect = nullptr);
+
+private:
+    void prepareTextElement(const Element& element,
+                            int windowWidth,
+                            int windowHeight,
+                            float dpiScale,
+                            const RenderTransform& inheritedTransform,
+                            const Rect* dirtyRect = nullptr,
+                            bool hasScissor = false,
+                            const Rect& scissorRect = {});
+
+    void renderElement(core::render::RenderBackend& renderBackend,
+                       const Element& element,
+                       int windowWidth,
+                       int windowHeight,
+                       float dpiScale,
+                       const RenderTransform& inheritedTransform,
+                       const Rect* dirtyRect = nullptr,
+                       bool hasScissor = false,
+                       const Rect& scissorRect = {});
+
+    void renderElementChildren(core::render::RenderBackend& renderBackend,
+                               const Element& element,
+                               int windowWidth,
+                               int windowHeight,
+                               float dpiScale,
+                               const RenderTransform& renderTransform,
+                               const Rect* dirtyRect,
+                               bool hasScissor,
+                               const Rect& scissorRect);
+
+    bool isRetainedLayerCandidate(const Element& element,
+                                  const runtime::PaintBoundsInstance& bounds,
+                                  const Rect& subtreePixels,
+                                  const Rect* dirtyRect,
+                                  bool hasScissor,
+                                  const Rect& scissorRect) const;
+
+    std::uint64_t retainedLayerSignature(const Element& element,
+                                         const runtime::PaintBoundsInstance& bounds,
+                                         float dpiScale) const;
+
+    std::uint64_t retainedElementPaintSignature(const Element& element,
+                                                std::uint64_t seed) const;
+
+    bool renderRetainedLayer(core::render::RenderBackend& renderBackend,
+                             const Element& element,
+                             int windowWidth,
+                             int windowHeight,
+                             float dpiScale,
+                             const RenderTransform& renderTransform,
+                             const Rect* dirtyRect,
+                             bool hasScissor,
+                             const Rect& scissorRect);
+
+    void renderRect(const Element& element,
+                    int windowWidth,
+                    int windowHeight,
+                    float dpiScale,
+                    const RenderTransform& renderTransform);
+
+    void renderPolygon(const Element& element,
+                       int windowWidth,
+                       int windowHeight,
+                       float dpiScale,
+                       const RenderTransform& renderTransform);
+
+    void prepareText(const Element& element,
+                     int windowWidth,
+                     int windowHeight,
+                     float dpiScale,
+                     const RenderTransform& renderTransform);
+
+    void renderText(const Element& element,
+                    int windowWidth,
+                    int windowHeight,
+                    float dpiScale,
+                    const RenderTransform& renderTransform);
+
+    void renderImage(const Element& element,
+                     int windowWidth,
+                     int windowHeight,
+                     float dpiScale,
+                     const RenderTransform& renderTransform);
+
+    void renderShaderToy(const Element& element,
+                         int windowWidth,
+                         int windowHeight,
+                         float dpiScale,
+                         const RenderTransform& renderTransform);
+
+    Ui& ui_;
+    runtime::InstanceStore& instances_;
+    bool retainedLayerRenderDisabled_ = false;
+};
+
 inline void applyOptionalScissor(core::render::RenderBackend& renderBackend,
                                  bool enabled,
                                  const Rect& rect,
@@ -18,7 +124,7 @@ inline std::vector<Vec2> scaledPolygonPoints(const std::vector<Vec2>& points, fl
     return result;
 }
 
-inline void Runtime::renderDirect(core::render::RenderBackend& renderBackend, int windowWidth, int windowHeight, float dpiScale, const Rect* dirtyRect) {
+inline void RuntimeRenderer::renderDirect(core::render::RenderBackend& renderBackend, int windowWidth, int windowHeight, float dpiScale, const Rect* dirtyRect) {
     const RenderTransform identity;
     const bool hasScissor = dirtyRect != nullptr;
     const Rect scissor = dirtyRect ? *dirtyRect : Rect{};
@@ -31,7 +137,7 @@ inline void Runtime::renderDirect(core::render::RenderBackend& renderBackend, in
     }
 }
 
-inline void Runtime::prepareTextElement(
+inline void RuntimeRenderer::prepareTextElement(
     const Element& element,
     int windowWidth,
     int windowHeight,
@@ -41,8 +147,8 @@ inline void Runtime::prepareTextElement(
     bool hasScissor,
     const Rect& scissorRect) {
     if (dirtyRect != nullptr || hasScissor) {
-        const auto cached = paintBounds_.find(element.id);
-        if (cached != paintBounds_.end()) {
+        const auto cached = instances_.paintBounds.find(element.id);
+        if (cached != instances_.paintBounds.end()) {
             if (!cached->second.hasSubtree) {
                 return;
             }
@@ -56,7 +162,7 @@ inline void Runtime::prepareTextElement(
         }
     }
 
-    const RenderTransform renderTransform = resolveRenderTransform(element, dpiScale, inheritedTransform);
+    const RenderTransform renderTransform = instances_.renderTransform(element, dpiScale, inheritedTransform);
     if (renderTransform.opacity <= 0.001f) {
         return;
     }
@@ -76,7 +182,7 @@ inline void Runtime::prepareTextElement(
     }
 
     if (element.kind == ElementKind::Text) {
-        runtime::TextInstance& instance = textInstance(element.id);
+        runtime::TextInstance& instance = instances_.text(element.id);
         Rect frame = toPixelRect(transformRect({instance.frame.value().x,
                                                 instance.frame.value().y,
                                                 instance.frame.value().width,
@@ -96,7 +202,7 @@ inline void Runtime::prepareTextElement(
     }
 }
 
-inline void Runtime::renderElement(
+inline void RuntimeRenderer::renderElement(
     core::render::RenderBackend& renderBackend,
     const Element& element,
     int windowWidth,
@@ -107,8 +213,8 @@ inline void Runtime::renderElement(
     bool hasScissor,
     const Rect& scissorRect) {
     if (dirtyRect != nullptr || hasScissor) {
-        const auto cached = paintBounds_.find(element.id);
-        if (cached != paintBounds_.end()) {
+        const auto cached = instances_.paintBounds.find(element.id);
+        if (cached != instances_.paintBounds.end()) {
             if (!cached->second.hasSubtree) {
                 return;
             }
@@ -122,7 +228,7 @@ inline void Runtime::renderElement(
         }
     }
 
-    const RenderTransform renderTransform = resolveRenderTransform(element, dpiScale, inheritedTransform);
+    const RenderTransform renderTransform = instances_.renderTransform(element, dpiScale, inheritedTransform);
     if (renderTransform.opacity <= 0.001f) {
         return;
     }
@@ -141,10 +247,10 @@ inline void Runtime::renderElement(
     }
 
     if (element.kind == ElementKind::Rect) {
-        Rect visual = toPixelRect(visualRect(rectInstance(element.id).frame.value(),
-                                            rectInstance(element.id).shadow.value(),
-                                            rectInstance(element.id).blur.value(),
-                                            rectInstance(element.id).transform.value()), dpiScale);
+        Rect visual = toPixelRect(visualRect(instances_.rect(element.id).frame.value(),
+                                            instances_.rect(element.id).shadow.value(),
+                                            instances_.rect(element.id).blur.value(),
+                                            instances_.rect(element.id).transform.value()), dpiScale);
         visual = applyRenderTransform(visual, renderTransform);
         if ((!dirtyRect || intersects(visual, *dirtyRect)) &&
             (!effectiveHasScissor || intersects(visual, effectiveScissor))) {
@@ -152,10 +258,10 @@ inline void Runtime::renderElement(
             renderRect(element, windowWidth, windowHeight, dpiScale, renderTransform);
         }
     } else if (element.kind == ElementKind::Polygon) {
-        Rect visual = toPixelRect(visualRect(polygonInstance(element.id).frame.value(),
+        Rect visual = toPixelRect(visualRect(instances_.polygon(element.id).frame.value(),
                                             Shadow{},
                                             0.0f,
-                                            polygonInstance(element.id).transform.value()), dpiScale);
+                                            instances_.polygon(element.id).transform.value()), dpiScale);
         visual = applyRenderTransform(visual, renderTransform);
         if ((!dirtyRect || intersects(visual, *dirtyRect)) &&
             (!effectiveHasScissor || intersects(visual, effectiveScissor))) {
@@ -163,7 +269,7 @@ inline void Runtime::renderElement(
             renderPolygon(element, windowWidth, windowHeight, dpiScale, renderTransform);
         }
     } else if (element.kind == ElementKind::Text) {
-        runtime::TextInstance& instance = textInstance(element.id);
+        runtime::TextInstance& instance = instances_.text(element.id);
         Rect frame = toPixelRect(transformRect({instance.frame.value().x,
                                                 instance.frame.value().y,
                                                 instance.frame.value().width,
@@ -177,8 +283,8 @@ inline void Runtime::renderElement(
             renderText(element, windowWidth, windowHeight, dpiScale, renderTransform);
         }
     } else if (element.kind == ElementKind::Image || element.kind == ElementKind::Svg) {
-        Rect visual = toPixelRect(imageVisualRect(imageInstance(element.id).frame.value(),
-                                                 imageInstance(element.id).transform.value()), dpiScale);
+        Rect visual = toPixelRect(imageVisualRect(instances_.image(element.id).frame.value(),
+                                                 instances_.image(element.id).transform.value()), dpiScale);
         visual = applyRenderTransform(visual, renderTransform);
         if ((!dirtyRect || intersects(visual, *dirtyRect)) &&
             (!effectiveHasScissor || intersects(visual, effectiveScissor))) {
@@ -186,7 +292,7 @@ inline void Runtime::renderElement(
             renderImage(element, windowWidth, windowHeight, dpiScale, renderTransform);
         }
     } else if (element.kind == ElementKind::Shadertoy) {
-        runtime::ShaderToyInstance& instance = shaderToyInstance(element.id);
+        runtime::ShaderToyInstance& instance = instances_.shaderToy(element.id);
         Rect visual = toPixelRect(imageVisualRect(instance.frame.value(), instance.transform.value()), dpiScale);
         visual = applyRenderTransform(visual, renderTransform);
         if ((!dirtyRect || intersects(visual, *dirtyRect)) &&
@@ -207,7 +313,7 @@ inline void Runtime::renderElement(
                           effectiveScissor);
 }
 
-inline void Runtime::renderElementChildren(
+inline void RuntimeRenderer::renderElementChildren(
     core::render::RenderBackend& renderBackend,
     const Element& element,
     int windowWidth,
@@ -251,7 +357,7 @@ struct RetainedLayerRenderScope {
     }
 };
 
-inline bool Runtime::isRetainedLayerCandidate(const Element& element,
+inline bool RuntimeRenderer::isRetainedLayerCandidate(const Element& element,
                                               const runtime::PaintBoundsInstance& bounds,
                                               const Rect& subtreePixels,
                                               const Rect* dirtyRect,
@@ -283,7 +389,7 @@ inline bool Runtime::isRetainedLayerCandidate(const Element& element,
     return true;
 }
 
-inline std::uint64_t Runtime::retainedLayerSignature(const Element& element,
+inline std::uint64_t RuntimeRenderer::retainedLayerSignature(const Element& element,
                                                      const runtime::PaintBoundsInstance& bounds,
                                                      float dpiScale) const {
     auto mix = [](std::uint64_t seed, std::uint64_t value) {
@@ -309,8 +415,8 @@ inline std::uint64_t Runtime::retainedLayerSignature(const Element& element,
     const std::vector<const Element*>& children = element.orderedChildren;
     seed = mix(seed, static_cast<std::uint64_t>(children.size()));
     for (const Element* child : children) {
-        const auto childBounds = paintBounds_.find(child->id);
-        if (childBounds != paintBounds_.end()) {
+        const auto childBounds = instances_.paintBounds.find(child->id);
+        if (childBounds != instances_.paintBounds.end()) {
             seed = mix(seed, retainedLayerSignature(*child, childBounds->second, dpiScale));
         } else {
             seed = retainedElementPaintSignature(*child, seed);
@@ -319,7 +425,7 @@ inline std::uint64_t Runtime::retainedLayerSignature(const Element& element,
     return seed;
 }
 
-inline std::uint64_t Runtime::retainedElementPaintSignature(const Element& element, std::uint64_t seed) const {
+inline std::uint64_t RuntimeRenderer::retainedElementPaintSignature(const Element& element, std::uint64_t seed) const {
     auto mix = [](std::uint64_t current, std::uint64_t value) {
         current ^= value + 0x9e3779b97f4a7c15ull + (current << 6) + (current >> 2);
         return current;
@@ -398,13 +504,7 @@ inline std::uint64_t Runtime::retainedElementPaintSignature(const Element& eleme
     return seed;
 }
 
-inline runtime::RetainedLayerInstance& Runtime::retainedLayerInstance(const std::string& id) {
-    runtime::RetainedLayerInstance& instance = retainedLayers_.try_emplace(id).first->second;
-    instance.seen = true;
-    return instance;
-}
-
-inline bool Runtime::renderRetainedLayer(core::render::RenderBackend& renderBackend,
+inline bool RuntimeRenderer::renderRetainedLayer(core::render::RenderBackend& renderBackend,
                                          const Element& element,
                                          int windowWidth,
                                          int windowHeight,
@@ -419,8 +519,8 @@ inline bool Runtime::renderRetainedLayer(core::render::RenderBackend& renderBack
     if (retainedLayerRenderDisabled_) {
         return false;
     }
-    const auto boundsIt = paintBounds_.find(element.id);
-    if (boundsIt == paintBounds_.end()) {
+    const auto boundsIt = instances_.paintBounds.find(element.id);
+    if (boundsIt == instances_.paintBounds.end()) {
         return false;
     }
     const Rect subtreePixels = toPixelRect(boundsIt->second.subtree, dpiScale);
@@ -429,7 +529,7 @@ inline bool Runtime::renderRetainedLayer(core::render::RenderBackend& renderBack
     }
 
     const runtime::PaintBoundsInstance& bounds = boundsIt->second;
-    runtime::RetainedLayerInstance& layer = retainedLayerInstance(element.id);
+    runtime::RetainedLayerInstance& layer = instances_.retainedLayer(element.id);
     const std::uint64_t signature = retainedLayerSignature(element, bounds, dpiScale);
     const Rect layerBounds = core::render::clampRenderRect(subtreePixels, windowWidth, windowHeight);
     const int layerWidth = static_cast<int>(std::ceil(layerBounds.width));
@@ -509,13 +609,13 @@ inline bool Runtime::renderRetainedLayer(core::render::RenderBackend& renderBack
     return true;
 }
 
-inline void Runtime::renderRect(
+inline void RuntimeRenderer::renderRect(
     const Element& element,
     int windowWidth,
     int windowHeight,
     float dpiScale,
     const RenderTransform& renderTransform) {
-    runtime::RectInstance& instance = rectInstance(element.id);
+    runtime::RectInstance& instance = instances_.rect(element.id);
     if (!instance.initialized) {
         instance.initialized = instance.primitive->initialize();
         if (!instance.initialized) {
@@ -540,13 +640,13 @@ inline void Runtime::renderRect(
     instance.primitive->render(windowWidth, windowHeight);
 }
 
-inline void Runtime::renderPolygon(
+inline void RuntimeRenderer::renderPolygon(
     const Element& element,
     int windowWidth,
     int windowHeight,
     float dpiScale,
     const RenderTransform& renderTransform) {
-    runtime::PolygonInstance& instance = polygonInstance(element.id);
+    runtime::PolygonInstance& instance = instances_.polygon(element.id);
     if (!instance.initialized) {
         instance.initialized = instance.primitive->initialize();
         if (!instance.initialized) {
@@ -567,13 +667,13 @@ inline void Runtime::renderPolygon(
     instance.primitive->render(windowWidth, windowHeight);
 }
 
-inline void Runtime::prepareText(
+inline void RuntimeRenderer::prepareText(
     const Element& element,
     int,
     int,
     float dpiScale,
     const RenderTransform& renderTransform) {
-    runtime::TextInstance& instance = textInstance(element.id);
+    runtime::TextInstance& instance = instances_.text(element.id);
     if (!instance.initialized) {
         instance.initialized = instance.primitive->initialize();
         if (!instance.initialized) {
@@ -619,13 +719,13 @@ inline void Runtime::prepareText(
     instance.primitive->prepare();
 }
 
-inline void Runtime::renderText(
+inline void RuntimeRenderer::renderText(
     const Element& element,
     int windowWidth,
     int windowHeight,
     float dpiScale,
     const RenderTransform& renderTransform) {
-    runtime::TextInstance& instance = textInstance(element.id);
+    runtime::TextInstance& instance = instances_.text(element.id);
     if (!instance.initialized) {
         instance.initialized = instance.primitive->initialize();
         if (!instance.initialized) {
@@ -671,13 +771,13 @@ inline void Runtime::renderText(
     instance.primitive->render(windowWidth, windowHeight);
 }
 
-inline void Runtime::renderImage(
+inline void RuntimeRenderer::renderImage(
     const Element& element,
     int windowWidth,
     int windowHeight,
     float dpiScale,
     const RenderTransform& renderTransform) {
-    runtime::ImageInstance& instance = imageInstance(element.id);
+    runtime::ImageInstance& instance = instances_.image(element.id);
     if (!instance.initialized) {
         instance.initialized = instance.primitive->initialize();
         if (!instance.initialized) {
@@ -704,13 +804,13 @@ inline void Runtime::renderImage(
     instance.primitive->render(windowWidth, windowHeight);
 }
 
-inline void Runtime::renderShaderToy(
+inline void RuntimeRenderer::renderShaderToy(
     const Element& element,
     int windowWidth,
     int windowHeight,
     float dpiScale,
     const RenderTransform& renderTransform) {
-    runtime::ShaderToyInstance& instance = shaderToyInstance(element.id);
+    runtime::ShaderToyInstance& instance = instances_.shaderToy(element.id);
     if (!instance.initialized) {
         instance.initialized = instance.primitive->initialize();
         if (!instance.initialized) {

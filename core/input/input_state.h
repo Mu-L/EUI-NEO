@@ -14,24 +14,9 @@ struct InputQueue {
     std::string text;
     std::string pasteText;
     std::string compositionText;
+    std::vector<KeyEvent> keys;
     double scrollX = 0.0;
     double scrollY = 0.0;
-    bool backspace = false;
-    bool del = false;
-    bool enter = false;
-    bool left = false;
-    bool right = false;
-    bool up = false;
-    bool down = false;
-    bool home = false;
-    bool end = false;
-    bool selectAll = false;
-    bool copy = false;
-    bool cut = false;
-    bool undo = false;
-    bool redo = false;
-    bool shift = false;
-    bool escape = false;
     bool compositionChanged = false;
 };
 
@@ -134,51 +119,19 @@ inline void queueScrollInput(window::Handle window, double x, double y) {
     queue.scrollY += y;
 }
 
-inline void queueKeyInput(window::Handle window, InputKey key, bool ctrl = false, bool shift = false) {
+inline void queueKeyInput(window::Handle window, const KeyEvent& event) {
     detail::InputQueue& queue = detail::inputQueue(window);
-    queue.shift = shift;
-    if (ctrl && key == InputKey::V) {
+    if (event.modifiers.shortcut && event.key == InputKey::V) {
         queue.pasteText += core::window::clipboardText(window);
         return;
     }
-    if (ctrl && key == InputKey::C) {
-        queue.copy = true;
-        return;
-    }
-    if (ctrl && key == InputKey::X) {
-        queue.cut = true;
-        return;
-    }
-    if (ctrl && key == InputKey::Z) {
-        shift ? queue.redo = true : queue.undo = true;
-        return;
-    }
-    if (ctrl && key == InputKey::Y) {
-        queue.redo = true;
-        return;
-    }
-    if (ctrl && key == InputKey::A) {
-        queue.selectAll = true;
+
+    if (detail::isComposing(window) &&
+        (event.key == InputKey::Backspace || event.key == InputKey::Delete)) {
         return;
     }
 
-    if (detail::isComposing(window) && (key == InputKey::Backspace || key == InputKey::Delete)) {
-        return;
-    }
-
-    switch (key) {
-    case InputKey::Backspace: queue.backspace = true; break;
-    case InputKey::Delete: queue.del = true; break;
-    case InputKey::Enter: queue.enter = true; break;
-    case InputKey::Left: queue.left = true; break;
-    case InputKey::Right: queue.right = true; break;
-    case InputKey::Up: queue.up = true; break;
-    case InputKey::Down: queue.down = true; break;
-    case InputKey::Home: queue.home = true; break;
-    case InputKey::End: queue.end = true; break;
-    case InputKey::Escape: queue.escape = true; break;
-    default: break;
-    }
+    queue.keys.push_back(event);
 }
 
 inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle window) {
@@ -190,22 +143,7 @@ inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle w
     keyboard.text = std::move(queue.text);
     keyboard.pasteText = std::move(queue.pasteText);
     keyboard.compositionText = std::move(queue.compositionText);
-    keyboard.backspace = queue.backspace;
-    keyboard.del = queue.del;
-    keyboard.enter = queue.enter;
-    keyboard.left = queue.left;
-    keyboard.right = queue.right;
-    keyboard.up = queue.up;
-    keyboard.down = queue.down;
-    keyboard.home = queue.home;
-    keyboard.end = queue.end;
-    keyboard.selectAll = queue.selectAll;
-    keyboard.copy = queue.copy;
-    keyboard.cut = queue.cut;
-    keyboard.undo = queue.undo;
-    keyboard.redo = queue.redo;
-    keyboard.shift = queue.shift;
-    keyboard.escape = queue.escape;
+    keyboard.keys = std::move(queue.keys);
     keyboard.composing = detail::isComposing(window);
     if (!queuedCompositionChanged && keyboard.composing) {
         keyboard.compositionText = previousCompositionText;
