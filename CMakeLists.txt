@@ -89,6 +89,15 @@ function(eui_apply_app_link_options target_name)
             /ENTRY:mainCRTStartup
             /SUBSYSTEM:WINDOWS
         )
+    elseif(MINGW)
+        target_link_options(${target_name} PRIVATE
+            $<$<NOT:$<CONFIG:Debug>>:-Wl,--gc-sections>
+            $<$<NOT:$<CONFIG:Debug>>:-s>
+            -mwindows
+        )
+        if(NOT EUI_BUILD_SHARED)
+            target_link_options(${target_name} PRIVATE -static)
+        endif()
     elseif(APPLE)
         target_link_options(${target_name} PRIVATE $<$<NOT:$<CONFIG:Debug>>:-Wl,-dead_strip>)
     else()
@@ -475,6 +484,8 @@ if(EUI_BUILD_TEST_FIXTURES)
         eui_neo_configure_app(${probe_name})
         if(MSVC)
             target_link_options(${probe_name} PRIVATE /SUBSYSTEM:CONSOLE)
+        elseif(MINGW)
+            target_link_options(${probe_name} PRIVATE -mconsole)
         endif()
         target_compile_definitions(${probe_name} PRIVATE EUI_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME ${probe_name} COMMAND ${probe_name} --frames 3)
