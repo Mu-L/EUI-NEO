@@ -37,71 +37,9 @@ Requirements:
 
 - CMake 3.14+
 - A C++17 compiler
-- OpenGL development files for the default renderer.
-- Vulkan SDK is optional. Use a `build-vk` directory only when you want the Vulkan renderer.
-- Platform OpenGL/windowing development files. Linux builds also need X11 and libcurl development packages.
+- OpenGL development files for the default renderer
 
-Build-time sources for GLFW, glad, tray, FreeType, libpng, and zlib are vendored under `3rd/`. Supported source trees are discovered by marker files rather than directory names or version suffixes, so an upstream source directory can be placed directly under `3rd/` without editing EUI-NEO's CMake files. The default dependency mode is `auto`: CMake uses existing parent targets for `glfw` / `glad` first, then package targets, then the local `3rd/` sources or pinned fetch fallback. Use `-DEUI_DEPS_MODE=bundled` for strict offline builds, or `-DEUI_DEPS_MODE=fetch` to force online dependency fetches.
-
-Bundled and fetched dependencies are built for static linking by default, including GLFW. Release packages therefore do not need to ship a GLFW DLL / dylib / so. SDL2 may still be dynamic when you choose a system SDL2 package. The `eui_neo` target itself is static by default; configure with `-DEUI_BUILD_SHARED=ON` when you want to build and install it as a shared library.
-
-GLFW is the default window backend. SDL2 is optional and is not vendored. If GLFW is not available or you want to test SDL2, add `sdl2` to the build directory name:
-
-```sh
-cmake -S . -B build-sdl2
-cmake --build build-sdl2
-```
-
-If a system SDL2 package is not available, add `-DEUI_DEPS_MODE=fetch` to download the pinned SDL2 source.
-
-macOS / Linux example:
-
-```sh
-cmake -S . -B build
-cmake --build build
-./build/gallery
-```
-
-Explicit render backend examples:
-
-```sh
-cmake -S . -B build-vk
-cmake --build build-vk --target gallery
-```
-
-Build directory suffixes are recognized on first configure: `build` means GLFW + OpenGL, `build-sdl2` means SDL2 + OpenGL, `build-vk` means GLFW + Vulkan, and `build-sdl2-vk` means SDL2 + Vulkan. If a build directory already has a CMake cache, delete it or pass `-DEUI_WINDOW_BACKEND=...` / `-DEUI_RENDER_BACKEND=...` explicitly.
-
-Windows / PowerShell example:
-
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
-.\build\Release\gallery.exe
-```
-
-Linux package hint:
-
-```sh
-sudo apt-get install -y ninja-build libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev libcurl4-openssl-dev
-# Optional for -DEUI_WINDOW_BACKEND=sdl2:
-sudo apt-get install -y libsdl2-dev
-```
-
-Top-level builds create one executable for each `examples/*.cpp` page source, such as `gallery`, `card_slider`, and `eui_demo`. After build, `assets/` is copied next to the executable automatically.
-
-User apps can live under `apps/` and are built the same way by default in a top-level checkout. Use either a flat `apps/my_app.cpp` file or a directory app such as `apps/my_app/app.cpp`. Every `.cpp` below a directory app is compiled into that app, so pages and services can use normal source files instead of implementation headers. Directory apps may include their own `apps/my_app/assets/`; those files are copied into the executable `assets/` directory after the framework assets. Disable this scan with `-DEUI_BUILD_USER_APPS=OFF`.
-
-## Optional Modules
-
-Optional feature modules live under `modules/` and are documented in the [Modules Guide](docs/modules.md).
-
-Tagged releases (`v*`) build Windows, Linux, and macOS packages through GitHub Actions and upload runtime and SDK packages as release assets. Runtime packages automatically collect every executable generated from `examples/*.cpp`.
-
-## Use In Your Project
-
-The recommended path is to add EUI-NEO as a CMake subdirectory, use the provided app main source, and write your UI through the public facade header.
-
-Minimal CMake:
+Add EUI-NEO under `external/EUI-NEO`, then create:
 
 ```cmake
 cmake_minimum_required(VERSION 3.14)
@@ -112,14 +50,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(external/EUI-NEO)
 
-add_executable(my_app
-    external/EUI-NEO/core/app/glfw_app_main.cpp
-    app.cpp
-)
+add_executable(my_app app.cpp)
 eui_neo_configure_app(my_app)
 ```
 
-Minimal `app.cpp`:
+`app.cpp`:
 
 ```cpp
 #include "eui_neo.h"
@@ -158,7 +93,21 @@ cmake --build build --parallel
 ./build/my_app
 ```
 
-EUI-NEO owns the window, event loop, selected render backend, and asset copying in this setup. For SDL2, Vulkan, `FetchContent`, custom main loops, or building the bundled examples from a parent project, see the [Integration Guide](docs/集成指南.md).
+`eui_neo_configure_app()` adds the selected GLFW/SDL2 entry point, links `eui::neo`, applies platform executable settings, and deploys the runtime assets. The application does not reference files under `core/`.
+
+The release SDK supports the same target setup:
+
+```cmake
+find_package(EuiNeo CONFIG REQUIRED)
+add_executable(my_app app.cpp)
+eui_neo_configure_app(my_app)
+```
+
+See the [Integration Guide](docs/集成指南.md) for installation, `FetchContent`, SDL2/Vulkan selection, and custom main loops. See [Development And Release](docs/开发与发布.md) for building this repository and dependency requirements.
+
+## Optional Modules
+
+Optional feature modules live under `modules/` and are documented in the [Modules Guide](docs/modules.md).
 
 ## Project Layout
 

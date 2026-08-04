@@ -46,9 +46,12 @@ const copy = {
     "components.lede": "按钮、输入、弹层、选择器、图表、Markdown 和数据表都只组合 DSL 树，不穿透后端 primitive。",
     "start.eyebrow": "Quick Start",
     "start.title": "把 EUI-NEO 接入你的 CMake 项目",
-    "start.cmake": "CMake 引入",
-    "start.app": "实现入口",
+    "start.lede": "只需一个应用源文件；框架负责入口、链接选项和运行资源。",
+    "start.cmake": "配置目标",
+    "start.app": "实现应用",
     "start.build": "构建运行",
+    "start.readme": "Quick Start",
+    "start.guide": "安装与进阶接入",
     "filter.all": "全部"
   },
   en: {
@@ -98,9 +101,12 @@ const copy = {
     "components.lede": "Buttons, inputs, popups, pickers, charts, Markdown, and data tables compose DSL trees without touching backend primitives.",
     "start.eyebrow": "Quick Start",
     "start.title": "Add EUI-NEO to your CMake project",
-    "start.cmake": "Add CMake",
+    "start.lede": "One application source file; the framework supplies the entry point, link settings, and runtime assets.",
+    "start.cmake": "Configure target",
     "start.app": "Implement app",
     "start.build": "Build and run",
+    "start.readme": "Quick Start",
+    "start.guide": "Install and integrate",
     "filter.all": "All"
   }
 };
@@ -274,13 +280,13 @@ const docs = [
     href: "../docs/集成指南.md",
     zh: {
       title: "集成指南",
-      desc: "公共 facade、静态库、FetchContent 和嵌入式主循环。"
+      desc: "Quick Start、安装 SDK、FetchContent 和自定义主循环。"
     },
     en: {
       title: "Integration Guide",
-      desc: "Public facade, static library, FetchContent, and embedded loops."
+      desc: "Quick Start, SDK installation, FetchContent, and custom loops."
     },
-    tags: "integration cmake fetchcontent app"
+    tags: "integration cmake sdk install find_package fetchcontent app"
   },
   {
     category: "workflow",
@@ -371,6 +377,7 @@ const readerTitle = document.querySelector("#readerTitle");
 const readerCategory = document.querySelector("#readerCategory");
 const readerBody = document.querySelector("#readerBody");
 const themeButton = document.querySelector("#themeButton");
+const quickStartLink = document.querySelector("#quickStartLink");
 const progressBar = document.querySelector("#progressBar");
 const stageSections = Array.from(document.querySelectorAll("main > section"));
 let tickingScroll = false;
@@ -481,10 +488,25 @@ async function openReader(doc) {
       throw new Error(`HTTP ${response.status}`);
     }
     const markdown = await response.text();
-    readerBody.innerHTML = renderMarkdown(markdown, doc.href);
+    const content = doc.section
+      ? extractMarkdownSection(markdown, doc.section)
+      : markdown;
+    readerBody.innerHTML = renderMarkdown(content, doc.href);
   } catch (error) {
     readerBody.innerHTML = `<p>${escapeHtml(t("reader.error"))}</p>`;
   }
+}
+
+function extractMarkdownSection(markdown, heading) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  if (start < 0) {
+    return markdown;
+  }
+  const end = lines.findIndex((line, index) =>
+    index > start && /^##\s+/.test(line)
+  );
+  return lines.slice(start, end < 0 ? undefined : end).join("\n");
 }
 
 function closeReader() {
@@ -657,6 +679,34 @@ themeButton.addEventListener("click", () => {
   setTheme(currentTheme === "dark" ? "light" : "dark");
 });
 
+if (quickStartLink) {
+  quickStartLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    const isChinese = currentLang === "zh";
+    openReader({
+      category: "workflow",
+      href: isChinese ? "../README.zh-CN.md" : "../README.md",
+      section: isChinese ? "快速开始" : "Quick Start",
+      zh: { title: "Quick Start" },
+      en: { title: "Quick Start" }
+    });
+  });
+}
+
+document.querySelectorAll(".start-links a").forEach((link) => {
+  if (link === quickStartLink) {
+    return;
+  }
+  link.addEventListener("click", (event) => {
+    const doc = findDocumentByHref(link.href);
+    if (!doc) {
+      return;
+    }
+    event.preventDefault();
+    openReader(doc);
+  });
+});
+
 document.querySelectorAll("[data-close-reader]").forEach((node) => {
   node.addEventListener("click", closeReader);
 });
@@ -781,7 +831,7 @@ document.querySelectorAll("main > section").forEach((node, index) => {
 document.querySelectorAll(".flow-item").forEach((node, index) => {
   observeReveal(node, "flow", index);
 });
-document.querySelectorAll(".code-step").forEach((node, index) => {
+document.querySelectorAll(".start-step").forEach((node, index) => {
   observeReveal(node, "code", index);
 });
 

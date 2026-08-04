@@ -263,10 +263,10 @@ if(EUI_WINDOW_BACKEND STREQUAL "sdl2")
     endif()
     target_compile_definitions(eui_neo PUBLIC EUI_WINDOW_BACKEND_SDL2=1)
     target_link_libraries(eui_neo PUBLIC SDL2::SDL2)
-    set(EUI_APP_MAIN_SOURCE core/app/sdl2_app_main.cpp)
+    set(EUI_APP_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/core/app/sdl2_app_main.cpp")
 else()
     target_link_libraries(eui_neo PUBLIC glfw)
-    set(EUI_APP_MAIN_SOURCE core/app/glfw_app_main.cpp)
+    set(EUI_APP_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/core/app/glfw_app_main.cpp")
 endif()
 
 target_link_libraries(eui_neo PUBLIC Freetype::Freetype)
@@ -323,21 +323,16 @@ endif()
 
 function(eui_neo_copy_assets target_name)
     if(EXISTS "${EUI_APP_ASSETS_DIR}")
-        add_dependencies(${target_name} eui_app_assets)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:${target_name}>/assets"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${EUI_APP_ASSETS_DIR}"
+                "$<TARGET_FILE_DIR:${target_name}>/assets"
+            VERBATIM
+        )
     endif()
 endfunction()
-
-if(EXISTS "${EUI_APP_ASSETS_DIR}" AND
-   (EUI_BUILD_APPS OR EUI_BUILD_USER_APPS OR EUI_BUILD_TEST_FIXTURES))
-    add_custom_target(eui_app_assets
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:eui_neo>/assets"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${EUI_APP_ASSETS_DIR}"
-            "$<TARGET_FILE_DIR:eui_neo>/assets"
-        VERBATIM
-    )
-endif()
 
 function(eui_neo_copy_runtime_dependencies target_name)
     if(EUI_BUILD_SHARED AND EUI_WINDOW_BACKEND STREQUAL "glfw")
@@ -359,6 +354,7 @@ function(eui_neo_copy_app_assets target_name asset_dir)
 endfunction()
 
 function(eui_neo_configure_app target_name)
+    target_sources(${target_name} PRIVATE "${EUI_APP_MAIN_SOURCE}" ${APP_ICON_RESOURCE})
     target_link_libraries(${target_name} PRIVATE eui::neo)
     eui_apply_compile_options(${target_name})
     eui_apply_app_link_options(${target_name})
@@ -382,7 +378,7 @@ if(EUI_BUILD_APPS)
             message(STATUS "Skipping serial_tool example because the serial module is not available.")
             continue()
         endif()
-        add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} "${app_source}" ${APP_ICON_RESOURCE})
+        add_executable(${app_name} "${app_source}")
         eui_neo_configure_app(${app_name})
         if(app_name STREQUAL "shadertoy")
             set(shadertoy_demo_spirv
@@ -447,7 +443,7 @@ if(EUI_BUILD_USER_APPS)
         if(TARGET ${app_name})
             message(FATAL_ERROR "Duplicate EUI app target name '${app_name}'. Rename one app source or folder.")
         endif()
-        add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} "${app_source}" ${APP_ICON_RESOURCE})
+        add_executable(${app_name} "${app_source}")
         eui_neo_configure_app(${app_name})
     endforeach()
 
@@ -460,7 +456,7 @@ if(EUI_BUILD_USER_APPS)
         endif()
         file(GLOB_RECURSE app_local_sources CONFIGURE_DEPENDS "${app_dir}/*.cpp")
         list(SORT app_local_sources)
-        add_executable(${app_name} ${EUI_APP_MAIN_SOURCE} ${app_local_sources} ${APP_ICON_RESOURCE})
+        add_executable(${app_name} ${app_local_sources})
         target_include_directories(${app_name} PRIVATE "${app_dir}")
         eui_neo_configure_app(${app_name})
         eui_neo_copy_app_assets(${app_name} "${app_dir}/assets")
@@ -473,7 +469,7 @@ if(EUI_BUILD_TEST_FIXTURES)
     file(GLOB TEST_FIXTURE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/*.cpp")
     foreach(fixture_source ${TEST_FIXTURE_SOURCES})
         get_filename_component(fixture_name "${fixture_source}" NAME_WE)
-        add_executable(${fixture_name} ${EUI_APP_MAIN_SOURCE} "${fixture_source}" ${APP_ICON_RESOURCE})
+        add_executable(${fixture_name} "${fixture_source}")
         eui_neo_configure_app(${fixture_name})
     endforeach()
 
@@ -481,7 +477,10 @@ if(EUI_BUILD_TEST_FIXTURES)
     foreach(probe_source ${TEST_PROBE_SOURCES})
         get_filename_component(probe_name "${probe_source}" NAME_WE)
         add_executable(${probe_name} "${probe_source}")
-        eui_neo_configure_app(${probe_name})
+        target_link_libraries(${probe_name} PRIVATE eui::neo)
+        eui_apply_compile_options(${probe_name})
+        eui_neo_copy_assets(${probe_name})
+        eui_neo_copy_runtime_dependencies(${probe_name})
         if(MSVC)
             target_link_options(${probe_name} PRIVATE /SUBSYSTEM:CONSOLE)
         elseif(MINGW)
@@ -579,6 +578,13 @@ if(EUI_ENABLE_INSTALL)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
+    install(FILES "${EUI_APP_MAIN_SOURCE}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/eui-neo/app"
+        RENAME app_main.cpp
+    )
+    install(DIRECTORY assets/
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/eui-neo/assets"
+    )
     if(TARGET eui_shadertoy_wrap)
         install(TARGETS eui_shadertoy_wrap
             EXPORT EuiNeoTargets
@@ -608,6 +614,9 @@ if(EUI_ENABLE_INSTALL)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "*.h"
         PATTERN "detail" EXCLUDE
+    )
+    install(FILES include/eui/detail/dsl_app_impl.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/eui/detail
     )
     set(EUI_NEO_INSTALL_HEADER_DIRS components core)
     if(EUI_ENABLE_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules")
@@ -680,6 +689,8 @@ set(EUI_NEO_BUILD_SHARED @EUI_BUILD_SHARED@)
 set(EUI_NEO_DEPS_MODE "@EUI_DEPS_MODE@")
 set(EUI_NEO_ENABLE_MARKDOWN @EUI_ENABLE_MARKDOWN@)
 set(EUI_NEO_ENABLE_MODULES @EUI_ENABLE_MODULES@)
+set(EUI_APP_MAIN_SOURCE "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/eui-neo/app/app_main.cpp")
+set(EUI_APP_ASSETS_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/eui-neo/assets")
 
 find_dependency(Threads)
 
@@ -705,6 +716,34 @@ if(NOT WIN32)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/EuiNeoTargets.cmake")
+
+function(eui_neo_copy_assets target_name)
+    if(EXISTS "${EUI_APP_ASSETS_DIR}")
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:${target_name}>/assets"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${EUI_APP_ASSETS_DIR}"
+                "$<TARGET_FILE_DIR:${target_name}>/assets"
+            VERBATIM
+        )
+    endif()
+endfunction()
+
+function(eui_neo_configure_app target_name)
+    target_sources(${target_name} PRIVATE "${EUI_APP_MAIN_SOURCE}")
+    target_link_libraries(${target_name} PRIVATE eui::neo)
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /utf-8)
+        target_link_options(${target_name} PRIVATE /ENTRY:mainCRTStartup /SUBSYSTEM:WINDOWS)
+    elseif(MINGW)
+        target_link_options(${target_name} PRIVATE -mwindows)
+        if(NOT EUI_NEO_BUILD_SHARED)
+            target_link_options(${target_name} PRIVATE -static)
+        endif()
+    endif()
+    eui_neo_copy_assets(${target_name})
+endfunction()
 
 if(EUI_NEO_RENDER_BACKEND STREQUAL "vulkan")
     include("${CMAKE_CURRENT_LIST_DIR}/EuiShaderToy.cmake")

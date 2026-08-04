@@ -22,6 +22,7 @@ void compose(eui::Ui& ui, const eui::Screen& screen) {
 
 } // namespace app
 
+#if !defined(EUI_FIND_PACKAGE_APP)
 int main() {
     eui::Color color{1.0f, 0.0f, 0.0f, 1.0f};
     eui::json::Document document;
@@ -31,3 +32,4 @@ int main() {
                         value == "installed";
     return color.r > 0.5f && jsonOk && publicHeaderCompanionIsLinked() ? 0 : 1;
 }
+#endif
