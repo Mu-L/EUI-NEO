@@ -321,8 +321,23 @@ if(WIN32)
     set(APP_ICON_RESOURCE "${APP_ICON_RC}")
 endif()
 
+set(EUI_SHARED_ASSET_TARGET)
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR AND EXISTS "${EUI_APP_ASSETS_DIR}")
+    add_custom_target(eui_neo_runtime_assets
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${EUI_APP_RUNTIME_DIR}/assets"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${EUI_APP_ASSETS_DIR}"
+            "${EUI_APP_RUNTIME_DIR}/assets"
+        VERBATIM
+    )
+    set(EUI_SHARED_ASSET_TARGET eui_neo_runtime_assets)
+endif()
+
 function(eui_neo_copy_assets target_name)
-    if(EXISTS "${EUI_APP_ASSETS_DIR}")
+    if(EUI_SHARED_ASSET_TARGET)
+        add_dependencies(${target_name} ${EUI_SHARED_ASSET_TARGET})
+    elseif(EXISTS "${EUI_APP_ASSETS_DIR}")
         add_custom_command(TARGET ${target_name} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
                 "$<TARGET_FILE_DIR:${target_name}>/assets"
