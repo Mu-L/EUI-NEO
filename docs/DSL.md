@@ -65,6 +65,7 @@ static const DslAppConfig config = DslAppConfig{}
     .pageId("clock")
     .clearColor({0.965f, 0.966f, 0.970f, 1.0f})
     .windowSize(1600, 1080)
+    .uiScale(1.25f)
     .fps(90.0)
     .textFont("YouSheBiaoTiHei-2.ttf");
 ```
