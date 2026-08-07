@@ -314,6 +314,7 @@ std::string resolveSystemUiFontPath() {
     });
 #else
     return firstExistingPath({
+        // Debian / Ubuntu layout
         "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
         "/usr/share/fonts/noto/NotoSans-Regular.ttf",
         "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
@@ -322,7 +323,15 @@ std::string resolveSystemUiFontPath() {
         "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
         "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        // Fedora / RHEL family (static packages)
+        "/usr/share/fonts/google-noto-sans/NotoSans-Regular.ttf",
+        "/usr/share/fonts/google-noto-sans-cjk/NotoSansCJK-Regular.ttc",
+        // Fedora 38+ variable-font packages
+        "/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf",
+        "/usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf"
     });
 #endif
 }
@@ -343,6 +352,7 @@ std::string resolveSystemIconFontPath() {
     });
 #else
     return firstExistingPath({
+        // Debian / Ubuntu layout
         "/usr/share/fonts/fontawesome/fa-solid-900.ttf",
         "/usr/share/fonts/TTF/fa-solid-900.ttf",
         "/usr/share/fonts/truetype/font-awesome/fa-solid-900.ttf",
@@ -352,7 +362,13 @@ std::string resolveSystemIconFontPath() {
         "/usr/share/fonts/google-noto/NotoSansSymbols2-Regular.ttf",
         "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf"
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        // Fedora / RHEL family (static packages)
+        "/usr/share/fonts/google-noto-sans-symbols2/NotoSansSymbols2-Regular.ttf",
+        "/usr/share/fonts/google-noto-sans-symbols/NotoSansSymbols-Regular.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        // Fedora 38+ variable-font packages
+        "/usr/share/fonts/google-noto-vf/NotoSansSymbols[wght].ttf"
     });
 #endif
 }
@@ -369,9 +385,13 @@ std::string resolveSystemEmojiFontPath() {
     });
 #else
     return firstExistingPath({
+        // Debian / Ubuntu layout
         "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
         "/usr/share/fonts/noto/NotoColorEmoji.ttf",
-        "/usr/share/fonts/google-noto/NotoColorEmoji.ttf"
+        "/usr/share/fonts/google-noto/NotoColorEmoji.ttf",
+        // Fedora / RHEL family
+        "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+        "/usr/share/fonts/google-noto-color-emoji-fonts/Noto-COLRv1.ttf"
     });
 #endif
 }
@@ -393,6 +413,7 @@ std::string resolveSystemMonospaceFontPath() {
     });
 #else
     return firstExistingPath({
+        // Debian / Ubuntu layout
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
         "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
         "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf",
@@ -401,7 +422,14 @@ std::string resolveSystemMonospaceFontPath() {
         "/usr/share/fonts/opentype/noto/NotoSansMono-Regular.ttf",
         "/usr/share/fonts/noto/NotoSansMono-Regular.ttf",
         "/usr/share/fonts/google-noto/NotoSansMono-Regular.ttf",
-        "/usr/share/fonts/TTF/Hack-Regular.ttf"
+        "/usr/share/fonts/TTF/Hack-Regular.ttf",
+        // Fedora / RHEL family (static packages)
+        "/usr/share/fonts/google-noto-sans-mono/NotoSansMono-Regular.ttf",
+        // Fedora 38+ variable-font packages
+        "/usr/share/fonts/google-noto-vf/NotoSansMono[wght].ttf",
+        "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/liberation-mono-fonts/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/source-foundry-hack-fonts/Hack-Regular.ttf"
     });
 #endif
 }
@@ -650,9 +678,16 @@ std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath,
     addLazyFallback("/System/Library/Fonts/Supplemental/Arial Unicode.ttf");
     addLazyFallback("/System/Library/Fonts/Supplemental/Arial.ttf");
 #else
+    // Debian / Ubuntu layout
     addLazyFallback("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf");
     addLazyFallback("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc");
     addLazyFallback("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+    // Fedora / RHEL family
+    addLazyFallback("/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf");
+    addLazyFallback("/usr/share/fonts/google-noto-color-emoji-fonts/Noto-COLRv1.ttf");
+    addLazyFallback("/usr/share/fonts/google-noto-sans-cjk/NotoSansCJK-Regular.ttc");
+    addLazyFallback("/usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc");
+    addLazyFallback("/usr/share/fonts/dejavu/DejaVuSans.ttf");
 #endif
 
     if (cache.entries.size() >= kFontStackCacheCapacity) {
