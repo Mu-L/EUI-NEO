@@ -9,7 +9,7 @@
 --   xmake f --shared=y
 
 set_project("EUI-NEO")
-set_version("0.5.5")
+set_version("0.5.6")
 set_xmakever("2.9.0")
 set_languages("c99", "cxx17")
 
@@ -62,6 +62,37 @@ option("vulkan_low_latency")
     set_showmenu(true)
     set_description("Prefer low-latency Vulkan presentation when available.")
 option_end()
+
+function eui_apply_compile_options(target)
+    if target:is_plat("windows") and not target:is_plat("mingw") then
+        target:add("cxflags", "/utf-8")
+        if not is_mode("debug") then
+            target:add("cxflags", "/O1", "/GS-", "/sdl-", "/wd4819")
+        end
+    elseif not is_mode("debug") then
+        target:add("cxxflags", "-Os", "-fno-exceptions", "-fno-rtti")
+    end
+end
+
+function eui_apply_app_link_options(target)
+    if target:is_plat("mingw") then
+        target:add("ldflags", "-mwindows", {force = true})
+        if not is_mode("debug") then
+            target:add("ldflags", "-Wl,--gc-sections", "-s")
+        end
+    elseif target:is_plat("windows") then
+        target:add("ldflags", "/SUBSYSTEM:WINDOWS", "/ENTRY:mainCRTStartup", {force = true})
+        if not is_mode("debug") then
+            target:add("ldflags", "/OPT:REF", "/OPT:ICF", "/INCREMENTAL:NO", {force = true})
+        end
+    elseif target:is_plat("macosx") then
+        if not is_mode("debug") then
+            target:add("ldflags", "-Wl,-dead_strip")
+        end
+    elseif not is_mode("debug") then
+        target:add("ldflags", "-Wl,--gc-sections", "-s")
+    end
+end
 -- =============================================================================
 -- Resolve backends
 -- =============================================================================
@@ -110,43 +141,20 @@ end
 if render_backend == "vulkan" then
     add_requires("vulkan")
 end
-if not is_plat("windows") then
-    add_requires("curl", {configs = {shared = false}})
-end
--- =============================================================================
--- Compile / link option helpers
--- =============================================================================
-
-function eui_apply_compile_options(target)
-    if is_plat("windows") then
-        target:add("cxflags", "/utf-8")
-        if not is_mode("debug") then
-            target:add("cxflags", "/O1", "/GS-", "/sdl-", "/wd4819")
-        end
-    else
-        if not is_mode("debug") then
-            target:add("cxxflags", "-Os", "-fno-exceptions", "-fno-rtti")
-        end
-    end
+if not is_plat("windows", "mingw") then
+    add_requires("libcurl", {configs = {shared = false}})
 end
 
-function eui_apply_app_link_options(target)
-    if is_plat("windows") then
-        target:add("ldflags", "/ENTRY:mainCRTStartup", "/SUBSYSTEM:WINDOWS")
-        if not is_mode("debug") then
-            target:add("ldflags", "/OPT:REF", "/OPT:ICF", "/INCREMENTAL:NO")
-        end
-    elseif is_plat("macosx") then
-        if not is_mode("debug") then
-            target:add("ldflags", "-Wl,-dead_strip")
-        end
-    else
-        if not is_mode("debug") then
-            target:add("ldflags", "-Wl,--gc-sections", "-s")
-        end
-    end
+local c_source_flags = {}
+if is_plat("windows") then
+    table.insert(c_source_flags, "/TC")
 end
 
+local bridge_source_flags = table.copy(c_source_flags)
+if is_plat("macosx") then
+    table.insert(bridge_source_flags, "-x")
+    table.insert(bridge_source_flags, "objective-c")
+end
 -- =============================================================================
 -- Vendored single-file third-party libraries (built directly from 3rd/)
 -- =============================================================================
@@ -154,8 +162,7 @@ end
 if render_backend == "opengl" then
     target("eui_glad")
         set_kind("static")
-        add_files("3rd/glad/src/glad.c",
-            {force = {cxflags = {is_plat("windows") and "/TC" or ""}}})
+        add_files("3rd/glad/src/glad.c", {force = {cxflags = c_source_flags}})
         add_includedirs("3rd/glad/include", {public = true})
     target_end()
 end
@@ -163,8 +170,7 @@ end
 if enable_markdown then
     target("eui_md4c")
         set_kind("static")
-        add_files("3rd/md4c/src/md4c.c",
-            {force = {cxflags = {is_plat("windows") and "/TC" or ""}}})
+        add_files("3rd/md4c/src/md4c.c", {force = {cxflags = c_source_flags}})
         add_includedirs("3rd/md4c/src", {public = true})
     target_end()
 end
@@ -196,13 +202,9 @@ target("eui_neo")
         "core/window/window_input_backend.cpp"
     )
 
-    -- C files: force /TC on MSVC so they compile as C, not C++
-    add_files(
-        "core/platform/native_bridge.c",
-        "core/platform/tray_bridge.c",
-        "3rd/yyjson-0.12.0/src/yyjson.c",
-        {force = {cxflags = {is_plat("windows") and "/TC" or ""}}}
-    )
+    add_files("3rd/yyjson-0.12.0/src/yyjson.c", {force = {cxflags = c_source_flags}})
+    add_files("core/platform/native_bridge.c", "core/platform/tray_bridge.c",
+        {force = {cxflags = bridge_source_flags}})
 
     if render_backend == "opengl" then
         add_files(
@@ -226,7 +228,7 @@ target("eui_neo")
 
     if window_backend == "glfw" then
         add_files("core/platform/ime_bridge.c",
-            {force = {cxflags = {is_plat("windows") and "/TC" or ""}}})
+            {force = {cxflags = bridge_source_flags}})
     end
 
     add_includedirs("include", ".", "3rd/tray", {public = true})
@@ -278,12 +280,12 @@ target("eui_neo")
     elseif window_backend == "sdl2" then
         add_packages("sdl2", {public = true})
     end
-    add_packages("curl", {public = true, optional = true})
-    if not is_plat("windows") and has_package("curl") then
+    add_packages("libcurl", {public = true, optional = true})
+    if not is_plat("windows", "mingw") and has_package("libcurl") then
         add_defines("EUI_HAS_CURL=1", {public = true})
     end
 
-    if not is_plat("windows") then
+    if not is_plat("windows", "mingw") then
         add_syslinks("pthread", {public = true})
     end
 
@@ -299,17 +301,44 @@ target("eui_neo")
     if enable_markdown then
         add_installfiles("3rd/md4c/src/md4c.h", {prefixdir = "include"})
     end
+    add_installfiles("assets/(**)", {prefixdir = "share/eui-neo/assets"})
 
-    if is_plat("windows") then
-        add_cxflags("/utf-8")
-        if not is_mode("debug") then
-            add_cxflags("/O1", "/GS-", "/sdl-", "/wd4819")
-        end
-    else
-        if not is_mode("debug") then
-            add_cxxflags("-Os", "-fno-exceptions", "-fno-rtti")
-        end
+    if build_shared and is_plat("windows", "mingw") then
+        add_rules("utils.symbols.export_all")
     end
+    on_config(eui_apply_compile_options)
+target_end()
+
+if render_backend == "vulkan" then
+    target("eui_shadertoy_wrap")
+        set_kind("binary")
+        set_group("framework")
+        add_files("scripts/shadertoy_wrap.cpp", "core/render/shadertoy.cpp")
+        add_includedirs(".")
+        on_config(eui_apply_compile_options)
+    target_end()
+end
+
+target("eui_app")
+    set_kind("static")
+    set_group("framework")
+    add_files(app_main_source)
+    add_includedirs("include", ".")
+    add_deps("eui_neo", {public = true})
+    on_config(eui_apply_compile_options)
+target_end()
+
+target("eui_runtime_assets")
+    set_kind("phony")
+    set_group("framework")
+    on_build(function(target)
+        local assets_dir = path.join(os.projectdir(), "assets")
+        if os.isdir(assets_dir) then
+            local dest = path.join(target:targetdir(), "assets")
+            os.tryrm(dest)
+            os.cp(assets_dir, dest)
+        end
+    end)
 target_end()
 -- =============================================================================
 -- Optional modules
@@ -322,6 +351,7 @@ if build_modules then
             set_group("modules")
             add_includedirs("modules/keyboard", {public = true})
             add_deps("eui_neo")
+            add_installfiles("modules/keyboard/(**.h)", {prefixdir = "include/modules/keyboard"})
         target_end()
     end
 
@@ -331,6 +361,7 @@ if build_modules then
             set_group("modules")
             add_includedirs("modules/media", {public = true})
             add_deps("eui_neo")
+            add_installfiles("modules/media/(**.h)", {prefixdir = "include/modules/media"})
         target_end()
     end
 
@@ -341,71 +372,44 @@ if build_modules then
             add_files("modules/serial/serial.cpp")
             add_includedirs("modules/serial", {public = true})
             add_deps("eui_neo")
-            if is_plat("windows") then
-                add_cxflags("/utf-8")
-                if not is_mode("debug") then
-                    add_cxflags("/O1", "/GS-", "/sdl-", "/wd4819")
-                end
-            else
-                if not is_mode("debug") then
-                    add_cxxflags("-Os", "-fno-exceptions", "-fno-rtti")
-                end
-            end
+            add_installfiles("modules/serial/(**.h)", {prefixdir = "include/modules/serial"})
+            on_config(eui_apply_compile_options)
         target_end()
     end
 end
--- =============================================================================
--- App rule: link eui_neo, apply app link/compile options, copy assets.
--- =============================================================================
 
 rule("eui.app")
-    on_config(function(target)
-        target:add("deps", "eui_neo")
-        target:add("packages", "freetype", "libpng", "zlib")
-        if window_backend == "glfw" then
-            target:add("packages", "glfw")
-        else
-            target:add("packages", "sdl2")
-        end
-        if render_backend == "vulkan" then
-            target:add("packages", "vulkan")
-        end
-        -- Apply compile options (mirror of eui_apply_compile_options)
-        if is_plat("windows") then
-            target:add("cxflags", "/utf-8")
-            if not is_mode("debug") then
-                target:add("cxflags", "/O1", "/GS-", "/sdl-", "/wd4819")
-            end
-        else
-            if not is_mode("debug") then
-                target:add("cxxflags", "-Os", "-fno-exceptions", "-fno-rtti")
-            end
-        end
-        -- Apply app link options (mirror of eui_apply_app_link_options)
-        if is_plat("windows") then
-            target:add("ldflags", "/ENTRY:mainCRTStartup", "/SUBSYSTEM:WINDOWS", {force = true})
-            if not is_mode("debug") then
-                target:add("ldflags", "/OPT:REF", "/OPT:ICF", "/INCREMENTAL:NO", {force = true})
-            end
-        elseif is_plat("macosx") then
-            if not is_mode("debug") then
-                target:add("ldflags", "-Wl,-dead_strip", {force = true})
-            end
-        else
-            if not is_mode("debug") then
-                target:add("ldflags", "-Wl,--gc-sections", "-s", {force = true})
-            end
-        end
+    on_load(function(target)
+        target:add("deps", "eui_app", "eui_runtime_assets")
     end)
-    after_build(function(target)
-        local assets_dir = path.join(os.projectdir(), "assets")
-        if os.exists(assets_dir) then
-            local dest = path.join(target:targetdir(), "assets")
-            os.tryrm(dest)
-            os.cp(assets_dir, dest)
-        end
+    on_config(function(target)
+        eui_apply_compile_options(target)
+        eui_apply_app_link_options(target)
     end)
 rule_end()
+
+function eui_compile_shadertoy(target, source, output)
+    local wrapper = target:dep("eui_shadertoy_wrap")
+    assert(wrapper, "missing eui_shadertoy_wrap dependency")
+
+    import("lib.detect.find_tool")
+    local search_paths = {}
+    local vulkan_sdk = os.getenv("VULKAN_SDK")
+    if vulkan_sdk then
+        table.insert(search_paths, path.join(vulkan_sdk, "Bin"))
+        table.insert(search_paths, path.join(vulkan_sdk, "bin"))
+    end
+    local validator = find_tool("glslangValidator", {paths = search_paths})
+    assert(validator, "Vulkan SDK glslangValidator is required to generate Shadertoy SPIR-V")
+
+    local source_path = path.absolute(source, os.projectdir())
+    local output_path = path.absolute(output, target:targetdir())
+    local wrapped_path = path.join(target:autogendir(), "shadertoy", path.filename(output) .. ".wrapped.frag")
+    os.mkdir(path.directory(output_path))
+    os.mkdir(path.directory(wrapped_path))
+    os.vrunv(wrapper:targetfile(), {"--input", source_path, "--output", wrapped_path})
+    os.vrunv(validator.program, {"-V", "-S", "frag", wrapped_path, "-o", output_path})
+end
 
 -- =============================================================================
 -- Bundled example applications (examples/*.cpp)
@@ -421,7 +425,7 @@ if build_apps then
         target(name)
             set_kind("binary")
             set_group("examples")
-            add_files(app_main_source, file)
+            add_files(file)
             add_rules("eui.app")
             add_includedirs("include", ".")
             if name == "serial_tool" and build_modules and os.exists("modules/serial/serial.h") then
@@ -435,6 +439,24 @@ if build_apps then
                     "EUI_SHADERTOY_PRESETS_DIR=\"assets/shaders/shadertoy\"",
                     "EUI_SHADERTOY_PRESET_SPIRV_DIR=\"assets/shaders/shadertoy\""
                 )
+                if render_backend == "vulkan" then
+                    add_deps("eui_shadertoy_wrap")
+                    after_build(function(target)
+                        eui_compile_shadertoy(target,
+                            "assets/shaders/shadertoy/demo.frag",
+                            "assets/shaders/shadertoy/demo.frag.spv")
+                        for pass = 1, 5 do
+                            eui_compile_shadertoy(target,
+                                string.format("assets/shaders/shadertoy/blackhole/%d.frag", pass),
+                                string.format("assets/shaders/shadertoy/blackhole/%d.frag.spv", pass))
+                        end
+                        for pass = 1, 2 do
+                            eui_compile_shadertoy(target,
+                                string.format("assets/shaders/shadertoy/fish/%d.frag", pass),
+                                string.format("assets/shaders/shadertoy/fish/%d.frag.spv", pass))
+                        end
+                    end)
+                end
             end
             if name == "gallery" then
                 add_defines(
@@ -442,6 +464,14 @@ if build_apps then
                     "EUI_GALLERY_SHADERTOY_NOISE=\"assets/shaders/shadertoy/blackhole/color_noise.png\"",
                     "EUI_GALLERY_SHADERTOY_SPIRV=\"assets/shaders/shadertoy/gallery_demo.frag.spv\""
                 )
+                if render_backend == "vulkan" then
+                    add_deps("eui_shadertoy_wrap")
+                    after_build(function(target)
+                        eui_compile_shadertoy(target,
+                            "assets/shaders/shadertoy/demo.frag",
+                            "assets/shaders/shadertoy/gallery_demo.frag.spv")
+                    end)
+                end
             end
         target_end()
         ::continue::
@@ -457,7 +487,7 @@ if build_user then
         target(name)
             set_kind("binary")
             set_group("apps")
-            add_files(app_main_source, file)
+            add_files(file)
             add_rules("eui.app")
             add_includedirs("include", ".")
         target_end()
@@ -470,7 +500,7 @@ if build_user then
             target(name)
                 set_kind("binary")
                 set_group("apps")
-                add_files(app_main_source, appfile)
+                add_files(path.join(dir, "**.cpp"))
                 add_rules("eui.app")
                 add_includedirs("include", ".", dir)
                 after_build(function(target)

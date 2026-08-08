@@ -36,7 +36,7 @@ EUI-NEO 是一个基于 C++17 的跨平台高性能轻量级 UI 框架，支持 
 环境要求：
 
 - CMake 3.14+
-- 支持 C++17 的编译器
+- 支持 C++17 的编译器：MSVC 19.29+（Visual Studio 2019 16.11+）、GCC/MinGW-w64 12+ 或 Clang 14+
 - 默认渲染器所需的 OpenGL 开发文件
 
 把 EUI-NEO 放到 `external/EUI-NEO`，然后创建：
@@ -104,6 +104,24 @@ eui_neo_configure_app(my_app)
 ```
 
 安装、`FetchContent`、SDL2/Vulkan 选择和自定义主循环见 [集成指南](docs/集成指南.md)。构建本仓库和平台依赖见 [开发与发布](docs/开发与发布.md)。
+
+### Xmake
+
+Xmake 3.0+ 支持源码构建和 xrepo 接入：
+
+```lua
+set_languages("cxx17")
+add_requires("eui-neo")
+
+target("my_app")
+    set_kind("binary")
+    add_files("main.cpp", "app.cpp")
+    add_packages("eui-neo")
+```
+
+直接构建仓库时运行 `xmake f -m release -y` 和 `xmake`。需要 SDL2、Vulkan
+或共享库时分别加入 `--window_backend=sdl2`、`--render_backend=vulkan` 或
+`--shared=y`。源码树应用使用 `eui.app` 规则处理平台入口和运行资源。
 
 ## 可选模块
 

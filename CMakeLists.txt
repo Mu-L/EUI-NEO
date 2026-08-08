@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(EUI-NEO VERSION 0.5.5)
+project(EUI-NEO VERSION 0.5.6)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -47,6 +47,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
+
+if(MINGW AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12)
+    message(FATAL_ERROR
+        "EUI-NEO requires MinGW-w64 GCC 12 or newer; "
+        "detected GCC ${CMAKE_CXX_COMPILER_VERSION}. "
+        "Use a current MinGW-w64 distribution instead of legacy TDM-GCC.")
+endif()
 
 if(APPLE)
     enable_language(OBJC)

@@ -36,7 +36,7 @@ EUI-NEO is a cross-platform, high-performance, low-overhead C++17 UI framework w
 Requirements:
 
 - CMake 3.14+
-- A C++17 compiler
+- A C++17 compiler: MSVC 19.29+ (Visual Studio 2019 16.11+), GCC/MinGW-w64 12+, or Clang 14+
 - OpenGL development files for the default renderer
 
 Add EUI-NEO under `external/EUI-NEO`, then create:
@@ -104,6 +104,27 @@ eui_neo_configure_app(my_app)
 ```
 
 See the [Integration Guide](docs/集成指南.md) for installation, `FetchContent`, SDL2/Vulkan selection, and custom main loops. See [Development And Release](docs/开发与发布.md) for building this repository and dependency requirements.
+
+### Xmake
+
+Xmake 3.0+ is supported for source builds and xrepo library consumers:
+
+```lua
+set_languages("cxx17")
+add_requires("eui-neo")
+
+target("my_app")
+    set_kind("binary")
+    add_files("main.cpp", "app.cpp")
+    add_packages("eui-neo")
+```
+
+The xrepo package provides the `eui_neo` library; `main.cpp` owns the window
+loop and application entry point. When building this repository directly,
+the `eui.app` rule adds the selected platform entry point and deploys assets.
+
+For a repository build, use `xmake f -m release -y && xmake`. Select
+`--window_backend=sdl2`, `--render_backend=vulkan`, or `--shared=y` when needed.
 
 ## Optional Modules
 
