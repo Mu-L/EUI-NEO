@@ -48,6 +48,51 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
+# windres uses a shell pipe for preprocessing by default. On Windows that can
+# intermittently lose quoting when the MinGW toolchain path contains spaces.
+if(MINGW AND CMAKE_RC_COMPILER MATCHES "windres(\\.exe)?$")
+    if(NOT CMAKE_RC_FLAGS MATCHES "(^|[ \\t])--use-temp-file([ \\t]|$)")
+        string(APPEND CMAKE_RC_FLAGS " --use-temp-file")
+    endif()
+endif()
+
+set(EUI_MINGW_STATIC_LINK_OPTIONS -static)
+if(MINGW AND NOT EUI_BUILD_SHARED)
+    include(CheckCXXSourceCompiles)
+    set(EUI_MINGW_STATIC_LINK_PROBE [=[
+        #include <cstdio>
+        #include <thread>
+        int main() {
+            char buffer[8]{};
+            std::snprintf(buffer, sizeof(buffer), "%s", "ok");
+            std::thread worker([] {});
+            worker.join();
+            return buffer[0] == 'o' ? 0 : 1;
+        }
+    ]=])
+    set(EUI_SAVED_REQUIRED_LINK_OPTIONS "${CMAKE_REQUIRED_LINK_OPTIONS}")
+    set(EUI_SAVED_REQUIRED_QUIET "${CMAKE_REQUIRED_QUIET}")
+    set(CMAKE_REQUIRED_QUIET TRUE)
+    set(CMAKE_REQUIRED_LINK_OPTIONS -static)
+    check_cxx_source_compiles("${EUI_MINGW_STATIC_LINK_PROBE}"
+        EUI_MINGW_DEFAULT_STATIC_RUNTIME_LINKS)
+    if(NOT EUI_MINGW_DEFAULT_STATIC_RUNTIME_LINKS)
+        set(CMAKE_REQUIRED_LINK_OPTIONS -static -mcrtdll=ucrt)
+        check_cxx_source_compiles("${EUI_MINGW_STATIC_LINK_PROBE}"
+            EUI_MINGW_UCRT_STATIC_RUNTIME_LINKS)
+        if(EUI_MINGW_UCRT_STATIC_RUNTIME_LINKS)
+            list(APPEND EUI_MINGW_STATIC_LINK_OPTIONS -mcrtdll=ucrt)
+            message(STATUS "MinGW static runtime requires UCRT link compatibility")
+        else()
+            message(FATAL_ERROR
+                "The selected MinGW toolchain cannot link its static runtime. "
+                "Both the default CRT and UCRT compatibility mode failed.")
+        endif()
+    endif()
+    set(CMAKE_REQUIRED_LINK_OPTIONS "${EUI_SAVED_REQUIRED_LINK_OPTIONS}")
+    set(CMAKE_REQUIRED_QUIET "${EUI_SAVED_REQUIRED_QUIET}")
+endif()
+
 if(MINGW AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12)
     message(FATAL_ERROR
         "EUI-NEO requires MinGW-w64 GCC 12 or newer; "
@@ -103,7 +148,7 @@ function(eui_apply_app_link_options target_name)
             -mwindows
         )
         if(NOT EUI_BUILD_SHARED)
-            target_link_options(${target_name} PRIVATE -static)
+            target_link_options(${target_name} PRIVATE ${EUI_MINGW_STATIC_LINK_OPTIONS})
         endif()
     elseif(APPLE)
         target_link_options(${target_name} PRIVATE $<$<NOT:$<CONFIG:Debug>>:-Wl,-dead_strip>)
@@ -700,6 +745,8 @@ if(EUI_ENABLE_INSTALL)
         COMPATIBILITY SameMajorVersion
     )
     set(EUI_NEO_CONFIG_TEMPLATE "${CMAKE_CURRENT_BINARY_DIR}/EuiNeoConfig.cmake.in")
+    string(JOIN " " EUI_MINGW_STATIC_LINK_OPTIONS_CONFIG
+        ${EUI_MINGW_STATIC_LINK_OPTIONS})
     file(WRITE "${EUI_NEO_CONFIG_TEMPLATE}" [=[
 @PACKAGE_INIT@
 
@@ -761,7 +808,7 @@ function(eui_neo_configure_app target_name)
     elseif(MINGW)
         target_link_options(${target_name} PRIVATE -mwindows)
         if(NOT EUI_NEO_BUILD_SHARED)
-            target_link_options(${target_name} PRIVATE -static)
+            target_link_options(${target_name} PRIVATE @EUI_MINGW_STATIC_LINK_OPTIONS_CONFIG@)
         endif()
     endif()
     eui_neo_copy_assets(${target_name})
