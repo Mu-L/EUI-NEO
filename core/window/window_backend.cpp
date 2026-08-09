@@ -280,20 +280,6 @@ void postEmptyEvent() {
     SDL_PushEvent(&event);
 }
 
-void getCursorPosition(Handle, double& x, double& y) {
-    int cursorX = 0;
-    int cursorY = 0;
-    SDL_GetMouseState(&cursorX, &cursorY);
-    x = static_cast<double>(cursorX);
-    y = static_cast<double>(cursorY);
-}
-
-bool isMouseButtonDown(Handle, int button) {
-    const Uint32 state = SDL_GetMouseState(nullptr, nullptr);
-    const Uint32 mask = button == 1 ? SDL_BUTTON_RMASK : SDL_BUTTON_LMASK;
-    return (state & mask) != 0;
-}
-
 std::string clipboardText(Handle) {
     char* text = SDL_GetClipboardText();
     if (text == nullptr) {
@@ -444,15 +430,6 @@ double timeSeconds() {
 
 void postEmptyEvent() {
     glfwPostEmptyEvent();
-}
-
-void getCursorPosition(Handle window, double& x, double& y) {
-    glfwGetCursorPos(static_cast<GLFWwindow*>(window), &x, &y);
-}
-
-bool isMouseButtonDown(Handle window, int button) {
-    const int glfwButton = button == 1 ? GLFW_MOUSE_BUTTON_RIGHT : GLFW_MOUSE_BUTTON_LEFT;
-    return glfwGetMouseButton(static_cast<GLFWwindow*>(window), glfwButton) == GLFW_PRESS;
 }
 
 std::string clipboardText(Handle window) {

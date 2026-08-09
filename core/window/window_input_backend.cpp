@@ -2,11 +2,81 @@
 
 #if defined(EUI_WINDOW_BACKEND_SDL2)
 
+#include "core/input/input_state.h"
+
+#ifndef SDL_MAIN_HANDLED
+#define SDL_MAIN_HANDLED
+#endif
+#include <SDL.h>
+
 namespace core::window {
 
-void installInputCallbacks(Handle) {}
+namespace {
+
+constexpr double kPointerOutsideWindow = -1000000.0;
+
+bool refreshFocusedPointer(Handle window) {
+    if (SDL_GetMouseFocus() != static_cast<SDL_Window*>(window)) {
+        return false;
+    }
+    int x = 0;
+    int y = 0;
+    const Uint32 buttons = SDL_GetMouseState(&x, &y);
+    core::queuePointerMotion(window,
+                             static_cast<double>(x),
+                             static_cast<double>(y),
+                             (buttons & SDL_BUTTON_LMASK) != 0,
+                             (buttons & SDL_BUTTON_RMASK) != 0);
+    return true;
+}
+
+void getSdlCursorPosition(Handle window, double& x, double& y) {
+    if (window == nullptr) {
+        x = kPointerOutsideWindow;
+        y = kPointerOutsideWindow;
+        return;
+    }
+
+    if (core::detail::queuedPointerPosition(window, x, y)) {
+        return;
+    }
+    refreshFocusedPointer(window);
+    if (core::detail::queuedPointerPosition(window, x, y)) {
+        return;
+    }
+
+    x = kPointerOutsideWindow;
+    y = kPointerOutsideWindow;
+}
+
+bool isSdlMouseButtonDown(Handle window, int button) {
+    if (window == nullptr) {
+        return false;
+    }
+
+    if (!core::detail::hasQueuedPointerState(window)) {
+        refreshFocusedPointer(window);
+    }
+    return core::detail::queuedPointerButtonDown(window, button);
+}
+
+} // namespace
+
+void installInputCallbacks(Handle) {
+    SDL_StartTextInput();
+}
+
 void uninstallInputCallbacks(Handle) {}
+
 bool queryImeComposition(Handle, std::string&, bool&) { return false; }
+
+void getCursorPosition(Handle window, double& x, double& y) {
+    getSdlCursorPosition(window, x, y);
+}
+
+bool isMouseButtonDown(Handle window, int button) {
+    return isSdlMouseButtonDown(window, button);
+}
 
 } // namespace core::window
 
@@ -21,6 +91,15 @@ bool queryImeComposition(Handle, std::string&, bool&) { return false; }
 #include <GLFW/glfw3.h>
 
 namespace core::window {
+
+void getCursorPosition(Handle window, double& x, double& y) {
+    glfwGetCursorPos(static_cast<GLFWwindow*>(window), &x, &y);
+}
+
+bool isMouseButtonDown(Handle window, int button) {
+    const int glfwButton = button == 1 ? GLFW_MOUSE_BUTTON_RIGHT : GLFW_MOUSE_BUTTON_LEFT;
+    return glfwGetMouseButton(static_cast<GLFWwindow*>(window), glfwButton) == GLFW_PRESS;
+}
 
 void installInputCallbacks(Handle window) {
     if (window == nullptr) {

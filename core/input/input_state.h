@@ -23,8 +23,14 @@ struct InputQueue {
 struct PointerState {
     double lastX = 0.0;
     double lastY = 0.0;
+    double x = 0.0;
+    double y = 0.0;
     bool lastDown = false;
     bool lastRightDown = false;
+    bool down = false;
+    bool rightDown = false;
+    bool hasPosition = false;
+    bool inside = false;
 };
 
 inline std::unordered_map<window::Handle, InputQueue>& inputQueues() {
@@ -94,7 +100,81 @@ inline void appendUtf8(std::string& output, unsigned int codepoint) {
     }
 }
 
+inline bool hasQueuedPointerState(window::Handle window) {
+    const auto iterator = pointerStates().find(window);
+    return iterator != pointerStates().end() && iterator->second.hasPosition;
+}
+
+inline bool queuedPointerPosition(window::Handle window, double& x, double& y) {
+    const auto iterator = pointerStates().find(window);
+    if (iterator == pointerStates().end()) {
+        return false;
+    }
+    const PointerState& state = iterator->second;
+    if (!state.hasPosition || (!state.inside && !state.down && !state.rightDown)) {
+        return false;
+    }
+    x = state.x;
+    y = state.y;
+    return true;
+}
+
+inline bool queuedPointerButtonDown(window::Handle window, int button) {
+    const auto iterator = pointerStates().find(window);
+    if (iterator == pointerStates().end()) {
+        return false;
+    }
+    return button == 1 ? iterator->second.rightDown : iterator->second.down;
+}
+
 } // namespace detail
+
+inline void queuePointerMotion(window::Handle window,
+                               double x,
+                               double y,
+                               bool down,
+                               bool rightDown) {
+    detail::PointerState& state = detail::pointerState(window);
+    state.x = x;
+    state.y = y;
+    state.down = down;
+    state.rightDown = rightDown;
+    state.hasPosition = true;
+    state.inside = true;
+}
+
+inline void queuePointerButton(window::Handle window,
+                               double x,
+                               double y,
+                               int button,
+                               bool down) {
+    detail::PointerState& state = detail::pointerState(window);
+    state.x = x;
+    state.y = y;
+    state.hasPosition = true;
+    state.inside = true;
+    if (button == 0) {
+        state.down = down;
+    } else if (button == 1) {
+        state.rightDown = down;
+    }
+}
+
+inline void queuePointerPresence(window::Handle window, bool inside) {
+    detail::pointerState(window).inside = inside;
+}
+
+inline void clearPointerInput(window::Handle window) {
+    const auto iterator = detail::pointerStates().find(window);
+    if (iterator == detail::pointerStates().end()) {
+        return;
+    }
+    detail::PointerState& state = iterator->second;
+    state.down = false;
+    state.rightDown = false;
+    state.hasPosition = false;
+    state.inside = false;
+}
 
 inline void queueTextInput(window::Handle window, const std::string& text) {
     detail::InputQueue& queue = detail::inputQueue(window);
