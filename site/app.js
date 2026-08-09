@@ -17,7 +17,7 @@ const copy = {
     "why.eyebrow": "Why EUI-NEO",
     "why.title": "为 C++ 应用保留速度、控制力和现代 UI 体验。",
     "why.performance.title": "按需渲染",
-    "why.performance.text": "静止时等待事件，有动画才推进帧；脏区、framebuffer cache 和 retained layer cache 减少重复绘制。",
+    "why.performance.text": "静止时等待事件，有动画才推进帧；脏区、framebuffer cache 和保留层缓存减少重复绘制。",
     "why.backends.title": "后端可选",
     "why.backends.text": "GLFW / SDL2 窗口后端，OpenGL / Vulkan 渲染后端，同一套 DSL 输出。",
     "why.cpp.title": "C++ 直写",
@@ -34,13 +34,13 @@ const copy = {
     "reader.error": "文档读取失败，请检查本地服务或路径。",
     "rendering.eyebrow": "Rendering Core",
     "rendering.title": "统一 Runtime，双渲染后端",
-    "rendering.lede": "窗口、输入、Runtime 和 GPU 后端各守边界；dirty rect、render cache 和 retained layer cache 已覆盖 OpenGL / Vulkan。",
+    "rendering.lede": "窗口、输入、Runtime 和 GPU 后端各守边界；dirty rect、render cache 和保留层缓存已覆盖 OpenGL / Vulkan。",
     "flow.compose.title": "Compose",
     "flow.compose.text": "C++ DSL 构建 UI 树，Runtime 负责布局、状态同步和交互派发。",
     "flow.dirty.title": "Dirty Rect",
     "flow.dirty.text": "按 id 缓存图元和子树能力，变化时合并保守脏区，blur 等依赖内容会升级 full paint。",
     "flow.backend.title": "Backend",
-    "flow.backend.text": "OpenGL 与 Vulkan 各自管理 pipeline、atlas、texture、render cache、retained layer 和 frame lifecycle。",
+    "flow.backend.text": "OpenGL 与 Vulkan 各自管理 pipeline、atlas、texture、render cache、保留层和 frame lifecycle。",
     "components.eyebrow": "Component Layer",
     "components.title": "为工具型界面准备的组件层",
     "components.lede": "按钮、输入、弹层、选择器、图表、Markdown 和数据表都只组合 DSL 树，不穿透后端 primitive。",
@@ -188,8 +188,8 @@ const docs = [
     category: "rendering",
     href: "../docs/retained_layer_cache.md",
     zh: {
-      title: "Retained Layer Cache",
-      desc: "稳定静态子树的离屏 layer 缓存，OpenGL / Vulkan 后端资源和限制。"
+      title: "保留层缓存",
+      desc: "稳定静态子树和相邻绘制段的离屏图层缓存，以及 OpenGL / Vulkan 后端资源和限制。"
     },
     en: {
       title: "Retained Layer Cache",

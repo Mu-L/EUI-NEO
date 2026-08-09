@@ -153,7 +153,7 @@ tests/        probe 源码、fixture 应用和本地 benchmark 记录
 - [动画](docs/动画.md)
 - [异步](docs/异步.md)
 - [渲染后端架构与流程](docs/渲染后端架构.md)
-- [Retained Layer Cache](docs/retained_layer_cache.md)
+- [保留层缓存](docs/retained_layer_cache.md)
 - [图片](docs/图片.md)
 - [网络](docs/网络.md)
 - [平台能力](docs/平台能力.md)
