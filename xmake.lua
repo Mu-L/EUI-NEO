@@ -295,6 +295,8 @@ target("eui_neo")
     add_installfiles("core/(**.h)", {prefixdir = "include/core"})
     add_installfiles("3rd/stb_image.h", "3rd/nanosvg.h", "3rd/nanosvgrast.h", {prefixdir = "include/3rd"})
     add_installfiles("3rd/tray/tray.h", {prefixdir = "include/3rd/tray"})
+    add_installfiles("scripts/EuiShaderToy.cmake", "scripts/generate_shadertoy_spirv.py",
+        {prefixdir = "share/eui-neo/scripts"})
     if render_backend == "opengl" then
         add_installfiles("3rd/glad/include/(**.h)", {prefixdir = "include"})
     end
@@ -315,6 +317,9 @@ if render_backend == "vulkan" then
         set_group("framework")
         add_files("scripts/shadertoy_wrap.cpp", "core/render/shadertoy.cpp")
         add_includedirs(".")
+        if is_plat("mingw") then
+            add_ldflags("-municode", {force = true})
+        end
         on_config(eui_apply_compile_options)
     target_end()
 end
@@ -411,6 +416,41 @@ function eui_compile_shadertoy(target, source, output)
     os.vrunv(validator.program, {"-V", "-S", "frag", wrapped_path, "-o", output_path})
 end
 
+function eui_compile_shadertoy_config(target, config, asset_root, output_root)
+    local wrapper = target:dep("eui_shadertoy_wrap")
+    assert(wrapper, "missing eui_shadertoy_wrap dependency")
+
+    import("lib.detect.find_tool")
+    local python = find_tool("python3") or find_tool("python")
+    assert(python, "Python 3 is required to generate Shadertoy SPIR-V from a config")
+    local validator = find_tool("glslangValidator", {paths = (function()
+        local paths = {}
+        local vulkan_sdk = os.getenv("VULKAN_SDK")
+        if vulkan_sdk then
+            table.insert(paths, path.join(vulkan_sdk, "Bin"))
+            table.insert(paths, path.join(vulkan_sdk, "bin"))
+        end
+        return paths
+    end)()})
+    assert(validator, "Vulkan SDK glslangValidator is required to generate Shadertoy SPIR-V")
+
+    local config_path = path.absolute(config, os.projectdir())
+    local asset_root_path = path.absolute(asset_root, os.projectdir())
+    local output_root_path = path.absolute(output_root, target:targetdir())
+    local stamp = path.join(target:autogendir(), "shadertoy",
+        path.basename(path.directory(config)) .. ".config.stamp")
+    os.mkdir(path.directory(stamp))
+    os.vrunv(python.program, {
+        path.join(os.projectdir(), "scripts", "generate_shadertoy_spirv.py"),
+        "--config", config_path,
+        "--asset-root", asset_root_path,
+        "--output-root", output_root_path,
+        "--wrapper", wrapper:targetfile(),
+        "--validator", validator.program,
+        "--stamp", stamp
+    })
+end
+
 -- =============================================================================
 -- Bundled example applications (examples/*.cpp)
 -- =============================================================================
@@ -436,8 +476,7 @@ if build_apps then
                 add_defines(
                     "EUI_SHADERTOY_DEMO_SOURCE=\"assets/shaders/shadertoy/demo.frag\"",
                     "EUI_SHADERTOY_DEMO_SPIRV=\"assets/shaders/shadertoy/demo.frag.spv\"",
-                    "EUI_SHADERTOY_PRESETS_DIR=\"assets/shaders/shadertoy\"",
-                    "EUI_SHADERTOY_PRESET_SPIRV_DIR=\"assets/shaders/shadertoy\""
+                    "EUI_SHADERTOY_PRESETS_DIR=\"assets/shaders/shadertoy\""
                 )
                 if render_backend == "vulkan" then
                     add_deps("eui_shadertoy_wrap")
@@ -445,15 +484,12 @@ if build_apps then
                         eui_compile_shadertoy(target,
                             "assets/shaders/shadertoy/demo.frag",
                             "assets/shaders/shadertoy/demo.frag.spv")
-                        for pass = 1, 5 do
-                            eui_compile_shadertoy(target,
-                                string.format("assets/shaders/shadertoy/blackhole/%d.frag", pass),
-                                string.format("assets/shaders/shadertoy/blackhole/%d.frag.spv", pass))
-                        end
-                        for pass = 1, 2 do
-                            eui_compile_shadertoy(target,
-                                string.format("assets/shaders/shadertoy/fish/%d.frag", pass),
-                                string.format("assets/shaders/shadertoy/fish/%d.frag.spv", pass))
+                        for _, config in ipairs(os.files(
+                            "assets/shaders/shadertoy/*/config.json")) do
+                            eui_compile_shadertoy_config(target,
+                                config,
+                                "assets/shaders/shadertoy",
+                                "assets/shaders/shadertoy")
                         end
                     end)
                 end

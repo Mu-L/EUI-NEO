@@ -92,16 +92,14 @@ void validatesInlineSource() {
 
 void parsesGraphJson() {
     const std::string euiJson = R"JSON({
-        "version": 1,
         "passes": [{
             "name": "image",
             "inlineSource": "void mainImage(out vec4 c, in vec2 p) { c = vec4(uTint, 1.0); }",
             "sourceName": "json-inline.frag",
             "spirv": "generated/image.spv",
-            "channels": [{
-                "kind": "image",
-                "source": "images/input.png"
-            }]
+            "channels": {
+                "0": "image:images/input.png"
+            }
         }],
         "uniforms": [{
             "name": "uTint",
@@ -124,25 +122,57 @@ void parsesGraphJson() {
     assert(graph.uniforms[0].kind == ShaderToyUniformKind::Vec3);
     assert(graph.uniforms[0].values[1] == 0.4f);
 
-    const std::string arrayJson = R"JSON({
-        "passes": [[
-            {"type": 2, "bufferIndex": 0},
-            {"type": 1, "bufferIndex": -1, "imageName": "noise.png"},
-            {"type": 0, "bufferIndex": -1},
-            {"type": 0, "bufferIndex": -1}
-        ]]
-    })JSON";
-    assert(parseShaderToyGraphJson(arrayJson, "array", graph,
-                                   error));
-    assert(graph.passes[0].channels[0].kind ==
-           ShaderToyChannelKind::Self);
-    assert(graph.passes[0].channels[1].kind ==
-           ShaderToyChannelKind::Image);
-
     assert(!parseShaderToyGraphJson(
-        R"JSON({"version":1,"passes":[{"name":"image","source":"x.frag","channels":[{"kind":"invalid","source":"input.bin"}]}]})JSON",
+        R"JSON({"version":2,"passes":[{"name":"image","source":"x.frag"}]})JSON",
         {}, graph, error));
     assert(error.stage == "graph-json");
+}
+
+bool parsesCompactGraphJson() {
+    const std::string compactJson = R"JSON({
+        "passes": [
+            {
+                "name": "A",
+                "source": "A.frag",
+                "channels": {
+                    "0": "image:noise.png",
+                    "2": "self"
+                }
+            },
+            {
+                "name": "Image",
+                "source": "Image.frag",
+                "channels": {
+                    "0": "A",
+                    "1": "buffer:A"
+                }
+            }
+        ]
+    })JSON";
+
+    ShaderToyGraph graph;
+    ShaderToyError error;
+    if (!parseShaderToyGraphJson(compactJson, "compact", graph, error) ||
+        error || graph.passes.size() != 2) {
+        return false;
+    }
+    if (graph.passes[0].name != "A" ||
+        graph.passes[0].channels[0].kind != ShaderToyChannelKind::Image ||
+        graph.passes[0].channels[2].kind != ShaderToyChannelKind::Self ||
+        graph.passes[1].channels[0].kind != ShaderToyChannelKind::Buffer ||
+        graph.passes[1].channels[0].source != "A" ||
+        graph.passes[1].channels[1].source != "A") {
+        return false;
+    }
+    if (std::filesystem::path(graph.passes[0].channels[0].source).generic_string() !=
+        "compact/noise.png") {
+        return false;
+    }
+
+    const std::string invalid =
+        R"JSON({"passes":[{"name":"Image","source":"Image.frag","channels":{"0":"image:"}}]})JSON";
+    return !parseShaderToyGraphJson(invalid, {}, graph, error) &&
+           error.stage == "graph-json";
 }
 
 void wrapsBothBackendsFromOneSource() {
@@ -213,6 +243,7 @@ int main() {
     hashesSemanticContent();
     validatesInlineSource();
     parsesGraphJson();
+    if (!parsesCompactGraphJson()) return 1;
     wrapsBothBackendsFromOneSource();
     initializesUndefinedBasicLocalsWithoutChangingLines();
     hashesStructuredErrors();

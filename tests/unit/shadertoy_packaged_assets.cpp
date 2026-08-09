@@ -17,7 +17,7 @@ bool requireResource(const std::string& relativePath,
     return false;
 }
 
-bool requirePreset(const std::string& name, std::size_t expectedPasses) {
+bool requirePreset(const std::string& name) {
     const std::string relative =
         "assets/shaders/shadertoy/" + name + "/config.json";
     std::string configPath;
@@ -31,8 +31,8 @@ bool requirePreset(const std::string& name, std::size_t expectedPasses) {
         std::cerr << "packaged preset failed to load: " << error.message << "\n";
         return false;
     }
-    if (graph.passes.size() != expectedPasses) {
-        std::cerr << "unexpected pass count for " << name << "\n";
+    if (graph.passes.empty()) {
+        std::cerr << "preset contains no passes: " << name << "\n";
         return false;
     }
     for (const core::render::ShaderToyPass& pass : graph.passes) {
@@ -73,25 +73,31 @@ bool rejectPackagedIntermediates() {
 
 #if defined(EUI_TEST_EXPECT_SHADERTOY_SPIRV)
 bool requireSpirvResources() {
-    std::string resolved;
-    if (!requireResource(
-            "assets/shaders/shadertoy/demo.frag.spv", resolved)) {
+    std::string demoSpirv;
+    if (!requireResource("assets/shaders/shadertoy/demo.frag.spv", demoSpirv)) {
         return false;
     }
-    for (int pass = 1; pass <= 5; ++pass) {
+    for (const char* name : {"blackhole", "fish"}) {
+        std::string configPath;
         if (!requireResource(
-                "assets/shaders/shadertoy/blackhole/" +
-                    std::to_string(pass) + ".frag.spv",
-                resolved)) {
+                std::string("assets/shaders/shadertoy/") + name + "/config.json",
+                configPath)) {
             return false;
         }
-    }
-    for (int pass = 1; pass <= 2; ++pass) {
-        if (!requireResource(
-                "assets/shaders/shadertoy/fish/" +
-                    std::to_string(pass) + ".frag.spv",
-                resolved)) {
+        core::render::ShaderToyGraph graph;
+        core::render::ShaderToyError error;
+        if (!core::render::loadShaderToyGraphJson(configPath, graph, error)) {
             return false;
+        }
+        for (const core::render::ShaderToyPass& pass : graph.passes) {
+            std::error_code fileError;
+            if (!std::filesystem::exists(
+                    std::filesystem::u8path(pass.spirvPath), fileError) ||
+                fileError) {
+                std::cerr << "packaged SPIR-V did not resolve: "
+                          << pass.spirvPath << "\n";
+                return false;
+            }
         }
     }
     return true;
@@ -138,8 +144,8 @@ int main() {
         requireResource(
             "assets/shaders/shadertoy/blackhole/color_noise.png",
             resolved) &&
-        requirePreset("blackhole", 5) &&
-        requirePreset("fish", 2) &&
+        requirePreset("blackhole") &&
+        requirePreset("fish") &&
         rejectPackagedIntermediates()
 #if defined(EUI_TEST_EXPECT_SHADERTOY_SPIRV)
         && requireSpirvResources()

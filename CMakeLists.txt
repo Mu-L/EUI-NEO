@@ -276,6 +276,9 @@ if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "vulkan")
     target_include_directories(eui_shadertoy_wrap PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_features(eui_shadertoy_wrap PRIVATE cxx_std_17)
     eui_apply_compile_options(eui_shadertoy_wrap)
+    if(MINGW)
+        target_link_options(eui_shadertoy_wrap PRIVATE -municode)
+    endif()
     set_target_properties(eui_shadertoy_wrap PROPERTIES
         EXPORT_NAME shadertoy_wrap)
 endif()
@@ -454,30 +457,22 @@ if(EUI_BUILD_APPS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/shadertoy/demo.frag")
             set(shadertoy_presets_dir
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/shadertoy")
-            set(shadertoy_preset_spirv_dir
-                "${EUI_APP_RUNTIME_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}")
             target_compile_definitions(shadertoy PRIVATE
                 EUI_SHADERTOY_DEMO_SOURCE="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag"
                 EUI_SHADERTOY_DEMO_SPIRV="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}/demo.frag.spv"
-                EUI_SHADERTOY_PRESETS_DIR="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}"
-                EUI_SHADERTOY_PRESET_SPIRV_DIR="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}")
+                EUI_SHADERTOY_PRESETS_DIR="${EUI_SHADERTOY_RUNTIME_ASSET_DIR}")
             if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "vulkan")
                 eui_compile_shadertoy(shadertoy
                     SOURCE "${shadertoy_demo_source}"
                     OUTPUT "${shadertoy_demo_spirv}")
                 if(EXISTS "${shadertoy_presets_dir}")
-                    foreach(preset_name IN ITEMS blackhole fish)
-                        string(TOLOWER "${preset_name}" preset_asset_name)
-                        if(preset_name STREQUAL "blackhole")
-                            set(preset_pass_count 5)
-                        else()
-                            set(preset_pass_count 2)
-                        endif()
-                        foreach(pass_number RANGE 1 ${preset_pass_count})
-                            eui_compile_shadertoy(shadertoy
-                                SOURCE "assets/shaders/shadertoy/${preset_asset_name}/${pass_number}.frag"
-                                OUTPUT "${shadertoy_preset_spirv_dir}/${preset_asset_name}/${pass_number}.frag.spv")
-                        endforeach()
+                    file(GLOB preset_configs CONFIGURE_DEPENDS
+                         "${shadertoy_presets_dir}/*/config.json")
+                    foreach(preset_config IN LISTS preset_configs)
+                        eui_compile_shadertoy_config(shadertoy
+                            CONFIG "${preset_config}"
+                            ASSET_ROOT "${shadertoy_presets_dir}"
+                            OUTPUT_ROOT "${EUI_APP_RUNTIME_DIR}/${EUI_SHADERTOY_RUNTIME_ASSET_DIR}")
                     endforeach()
                 endif()
             endif()
@@ -656,7 +651,7 @@ if(EUI_ENABLE_INSTALL)
         install(TARGETS eui_shadertoy_wrap
             EXPORT EuiNeoTargets
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-        install(FILES scripts/EuiShaderToy.cmake
+        install(FILES scripts/EuiShaderToy.cmake scripts/generate_shadertoy_spirv.py
             DESTINATION ${EUI_NEO_INSTALL_CMAKEDIR})
     endif()
     set(EUI_NEO_INSTALL_DEP_TARGETS freetype png_static eui_zlib eui_md4c SDL2-static)

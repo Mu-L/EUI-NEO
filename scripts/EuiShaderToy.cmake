@@ -1,5 +1,7 @@
 include(CMakeParseArguments)
 
+set(EUI_SHADERTOY_SCRIPT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 function(eui_compile_shadertoy target_name)
     set(one_value_args SOURCE OUTPUT)
     set(multi_value_args UNIFORMS)
@@ -79,4 +81,67 @@ function(eui_compile_shadertoy_inline target_name)
         OUTPUT "${EUI_ST_OUTPUT}"
         UNIFORMS ${EUI_ST_UNIFORMS}
     )
+endfunction()
+
+function(eui_compile_shadertoy_config target_name)
+    set(one_value_args CONFIG ASSET_ROOT OUTPUT_ROOT)
+    cmake_parse_arguments(PARSE_ARGV 1 EUI_ST_CONFIG ""
+                          "${one_value_args}" "")
+
+    if(NOT TARGET ${target_name})
+        message(FATAL_ERROR "eui_compile_shadertoy_config target does not exist: ${target_name}")
+    endif()
+    if(NOT EUI_ST_CONFIG_CONFIG OR NOT EUI_ST_CONFIG_ASSET_ROOT OR
+       NOT EUI_ST_CONFIG_OUTPUT_ROOT)
+        message(FATAL_ERROR
+            "eui_compile_shadertoy_config requires CONFIG, ASSET_ROOT and OUTPUT_ROOT")
+    endif()
+    if(NOT Python3_Interpreter_FOUND OR NOT Python3_EXECUTABLE)
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+    endif()
+    if(NOT Python3_Interpreter_FOUND OR NOT Python3_EXECUTABLE)
+        message(FATAL_ERROR
+            "Python 3 is required to generate Shadertoy SPIR-V from a config")
+    endif()
+    if(TARGET eui_shadertoy_wrap)
+        set(wrapper_target eui_shadertoy_wrap)
+    elseif(TARGET eui::shadertoy_wrap)
+        set(wrapper_target eui::shadertoy_wrap)
+    else()
+        message(FATAL_ERROR "Shadertoy SPIR-V generation is available only in a Vulkan build")
+    endif()
+    if(NOT Vulkan_GLSLANG_VALIDATOR_EXECUTABLE)
+        message(FATAL_ERROR "Vulkan SDK glslangValidator is required to generate Shadertoy SPIR-V")
+    endif()
+
+    get_filename_component(config "${EUI_ST_CONFIG_CONFIG}" ABSOLUTE
+                           BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    get_filename_component(asset_root "${EUI_ST_CONFIG_ASSET_ROOT}" ABSOLUTE
+                           BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    get_filename_component(output_root "${EUI_ST_CONFIG_OUTPUT_ROOT}" ABSOLUTE
+                           BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+    get_filename_component(config_dir "${config}" DIRECTORY)
+    file(GLOB_RECURSE config_sources CONFIGURE_DEPENDS
+         "${config_dir}/*.frag" "${config_dir}/*.json" "${config}")
+    string(MD5 config_id "${target_name}:${config}:${output_root}")
+    set(stamp "${CMAKE_CURRENT_BINARY_DIR}/shadertoy-config/${config_id}.stamp")
+    add_custom_command(
+        OUTPUT "${stamp}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${output_root}"
+        COMMAND "${Python3_EXECUTABLE}"
+                "${EUI_SHADERTOY_SCRIPT_DIR}/generate_shadertoy_spirv.py"
+                --config "${config}"
+                --asset-root "${asset_root}"
+                --output-root "${output_root}"
+                --wrapper "$<TARGET_FILE:${wrapper_target}>"
+                --validator "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}"
+                --stamp "${stamp}"
+        DEPENDS ${config_sources} ${wrapper_target}
+                "${EUI_SHADERTOY_SCRIPT_DIR}/generate_shadertoy_spirv.py"
+        COMMENT "Compiling Shadertoy graph: ${config}"
+        VERBATIM
+    )
+    set(shader_target "${target_name}_shadertoy_config_${config_id}")
+    add_custom_target(${shader_target} DEPENDS "${stamp}")
+    add_dependencies(${target_name} ${shader_target})
 endfunction()

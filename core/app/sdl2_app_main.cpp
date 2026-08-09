@@ -105,9 +105,19 @@ float dpiScale(SDL_Window* window) {
 #ifdef _WIN32
     HWND hwnd = static_cast<HWND>(core::window::nativeWindowInfo(window).platformWindow);
     if (hwnd != nullptr) {
-        const UINT dpi = GetDpiForWindow(hwnd);
-        if (dpi > 0) {
-            return static_cast<float>(dpi) / 96.0f;
+        using GetDpiForWindowFunction = UINT(WINAPI*)(HWND);
+        static const GetDpiForWindowFunction getDpiForWindow = [] {
+            HMODULE user32 = GetModuleHandleW(L"user32.dll");
+            return user32 != nullptr
+                ? reinterpret_cast<GetDpiForWindowFunction>(
+                      GetProcAddress(user32, "GetDpiForWindow"))
+                : nullptr;
+        }();
+        if (getDpiForWindow != nullptr) {
+            const UINT dpi = getDpiForWindow(hwnd);
+            if (dpi > 0) {
+                return static_cast<float>(dpi) / 96.0f;
+            }
         }
     }
 #endif
