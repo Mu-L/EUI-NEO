@@ -168,8 +168,10 @@ tests/        Probe sources, fixture apps, and local benchmark notes
 
 EUI-NEO's original source code is licensed under the Apache License 2.0. Third-party code under `3rd/`, optional build-time dependencies fetched by CMake, and bundled fonts or icon fonts under `assets/` follow their respective upstream licenses and copyright notices.
 
-## Star History
+## Contributors
 
-<a href="https://www.star-history.com/#sudoevolve/EUI-NEO&Date">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=sudoevolve/EUI-NEO&type=Date">
+Thank you to everyone who has contributed code, improved the documentation, reported issues, or shared feedback with EUI-NEO.
+
+<a href="https://github.com/sudoevolve/EUI-NEO/graphs/contributors">
+  <img alt="EUI-NEO contributors" src="https://contrib.rocks/image?repo=sudoevolve/EUI-NEO">
 </a>

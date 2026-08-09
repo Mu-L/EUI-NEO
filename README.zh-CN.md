@@ -165,8 +165,10 @@ tests/        probe 源码、fixture 应用和本地 benchmark 记录
 
 EUI-NEO 的原创源码采用 Apache License 2.0。`3rd/` 下的第三方代码、CMake 可选联网拉取的构建期依赖，以及 `assets/` 下随项目分发的字体和图标字体，遵循各自上游许可证和版权声明。
 
-## Star History
+## 贡献者致谢
 
-<a href="https://www.star-history.com/#sudoevolve/EUI-NEO&Date">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=sudoevolve/EUI-NEO&type=Date">
+感谢所有为 EUI-NEO 提交代码、完善文档、报告问题和提供建议的贡献者。
+
+<a href="https://github.com/sudoevolve/EUI-NEO/graphs/contributors">
+  <img alt="EUI-NEO 贡献者" src="https://contrib.rocks/image?repo=sudoevolve/EUI-NEO">
 </a>
