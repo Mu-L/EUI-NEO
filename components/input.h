@@ -93,7 +93,7 @@ public:
         const std::function<void(const std::string&)> onChange = onChange_;
         const std::function<void()> onEnter = onEnter_;
         const std::function<void(bool)> onFocus = onFocus_;
-        const float textLineHeight = multiline_ ? fontSize * 1.2f : fontSize;
+        const float textLineHeight = fontSize * 1.2f;
         const float textY = multiline_ ? inset : std::max(0.0f, (height_ - textLineHeight) * 0.5f);
         const float textHeight = multiline_ ? std::max(0.0f, height_ - inset * 2.0f) : textLineHeight;
         const float width = width_;
