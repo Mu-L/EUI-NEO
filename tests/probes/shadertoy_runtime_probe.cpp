@@ -345,7 +345,8 @@ bool retainedLayerBlocker(core::window::Handle window) {
         runtime.render(160, 120, 1.0f, {});
         runtime.shutdown(false);
     }
-    return staticBackend.layersCreated == 1 && dynamicBackend.layersCreated == 0;
+    // Shadertoy blocks its containing layer, while static sibling runs remain cacheable.
+    return staticBackend.layersCreated == dynamicBackend.layersCreated + 1;
 }
 
 } // namespace
