@@ -152,8 +152,12 @@ inline runtime::DependentVisualState Runtime::dependentVisualStateForElement(
     float dpiScale,
     const RenderTransform& inheritedTransform) const {
     runtime::DependentVisualState state;
-    state.rect = inflateRect(visualDirtyRectForElement(element, dpiScale, inheritedTransform),
-                             dependentVisualPadding());
+    const auto paintBounds = instances_.paintBounds.find(element.id);
+    const Rect visualBounds = paintBounds != instances_.paintBounds.end() &&
+                              paintBounds->second.hasSubtree
+        ? paintBounds->second.subtree
+        : visualDirtyRectForElement(element, dpiScale, inheritedTransform);
+    state.rect = inflateRect(visualBounds, dependentVisualPadding());
 
     if (!element.hoverOpacitySourceId.empty()) {
         float hover = 0.0f;

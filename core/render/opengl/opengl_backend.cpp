@@ -242,6 +242,7 @@ void OpenGLRenderBackend::makeCurrent() {
 #else
     glfwMakeContextCurrent(static_cast<GLFWwindow*>(window_));
 #endif
+    flushRoundedRectBatch();
     resetStateCache();
 }
 
@@ -256,6 +257,7 @@ void OpenGLRenderBackend::present() {
     if (window_ == nullptr) {
         return;
     }
+    flushRoundedRectBatch();
 #if defined(EUI_WINDOW_BACKEND_SDL2)
     SDL_GL_SwapWindow(static_cast<SDL_Window*>(window_));
 #else
@@ -272,6 +274,7 @@ void OpenGLRenderBackend::present() {
 }
 
 bool OpenGLRenderBackend::ensureRenderCache(int width, int height) {
+    flushRoundedRectBatch();
     cacheRecreated_ = false;
     width = std::max(1, width);
     height = std::max(1, height);
@@ -330,6 +333,7 @@ void OpenGLRenderBackend::releaseRenderCache() {
 }
 
 void OpenGLRenderBackend::beginRenderCacheFrame(int width, int height, const std::vector<core::Rect>& repaintRects) {
+    flushRoundedRectBatch();
     cacheRenderArea_ = fullRenderRect(width, height);
     std::vector<core::Rect> renderRects = mergeRenderRects(clampRenderRects(repaintRects, width, height));
     if (!renderRects.empty()) {
@@ -347,6 +351,7 @@ void OpenGLRenderBackend::beginRenderCacheFrame(int width, int height, const std
 }
 
 void OpenGLRenderBackend::endRenderCacheFrame() {
+    flushRoundedRectBatch();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
@@ -358,6 +363,7 @@ void OpenGLRenderBackend::blitRenderCache(int width,
     if (blitRects.empty()) {
         return;
     }
+    flushRoundedRectBatch();
     core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
     stats.cacheBlits += static_cast<int>(blitRects.size());
     stats.backendCopyRegions += static_cast<int>(blitRects.size());
@@ -467,6 +473,7 @@ void OpenGLRenderBackend::invalidateRenderCacheSync() {
 }
 
 void OpenGLRenderBackend::clear(const core::Color& color) {
+    flushRoundedRectBatch();
     glClearColor(color.r, color.g, color.b, color.a);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -474,6 +481,7 @@ void OpenGLRenderBackend::clear(const core::Color& color) {
 void OpenGLRenderBackend::setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) {
     if (!enabled) {
         if (!scissorEnabledStateValid_ || scissorEnabledState_) {
+            flushRoundedRectBatch();
             glDisable(GL_SCISSOR_TEST);
             scissorEnabledState_ = false;
             scissorEnabledStateValid_ = true;
@@ -492,16 +500,21 @@ void OpenGLRenderBackend::setScissor(bool enabled, const core::Rect& rect, int f
     const GLint safeY = std::max<GLint>(0, y);
     const GLsizei safeWidth = std::max<GLsizei>(1, width);
     const GLsizei safeHeight = std::max<GLsizei>(1, height);
-    if (!scissorEnabledStateValid_ || !scissorEnabledState_) {
+    const bool enableChanged = !scissorEnabledStateValid_ || !scissorEnabledState_;
+    const bool rectChanged = !scissorRectStateValid_ ||
+                             scissorX_ != x ||
+                             scissorY_ != safeY ||
+                             scissorWidth_ != safeWidth ||
+                             scissorHeight_ != safeHeight;
+    if (enableChanged || rectChanged) {
+        flushRoundedRectBatch();
+    }
+    if (enableChanged) {
         glEnable(GL_SCISSOR_TEST);
         scissorEnabledState_ = true;
         scissorEnabledStateValid_ = true;
     }
-    if (!scissorRectStateValid_ ||
-        scissorX_ != x ||
-        scissorY_ != safeY ||
-        scissorWidth_ != safeWidth ||
-        scissorHeight_ != safeHeight) {
+    if (rectChanged) {
         glScissor(x, safeY, safeWidth, safeHeight);
         scissorX_ = x;
         scissorY_ = safeY;

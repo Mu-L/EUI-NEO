@@ -223,10 +223,11 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
                                    fullPaintRequested_ ? core::render::RenderCacheBlitMode::Full
                                                        : core::render::RenderCacheBlitMode::Dirty,
                                    dirtyRects);
-    const bool retainedLayerRebuilt = stats.retainedLayerRebuilds > 0;
+    const bool retainedLayerWarmupNeeded =
+        stats.retainedLayerMisses > 0 && stats.retainedLayerRebuilds == 0;
     dirtyRects_.clear();
-    fullPaintRequested_ = retainedLayerRebuilt;
-    paintRequested_ = retainedLayerRebuilt;
+    fullPaintRequested_ = retainedLayerWarmupNeeded;
+    paintRequested_ = retainedLayerWarmupNeeded;
     core::render::publishRenderFrameStats();
 }
 

@@ -473,6 +473,7 @@ void setCustomUniform(GLuint program, const ShaderToyUniform& uniform) {
 OpenGLRenderBackend::ShaderToyHandle OpenGLRenderBackend::createShaderToy(
     const ShaderToyGraph& graph,
     ShaderToyError* error) {
+    flushRoundedRectBatch();
     if (error != nullptr) *error = {};
     const ShaderToyValidationResult validation = validateShaderToyGraph(graph);
     if (!validation.valid()) {
@@ -537,6 +538,7 @@ OpenGLRenderBackend::TextureHandle OpenGLRenderBackend::renderShaderToy(
     bool paused,
     bool reset,
     ShaderToyError* error) {
+    flushRoundedRectBatch();
     auto* toy = static_cast<OpenGLShaderToy*>(handle);
     if (toy == nullptr || width <= 0 || height <= 0 || graph.passes.size() != toy->passes.size()) {
         setError(error, ShaderToyErrorCode::ResourceCreationFailed, nullptr,
@@ -675,6 +677,7 @@ OpenGLRenderBackend::TextureHandle OpenGLRenderBackend::renderShaderToy(
 }
 
 void OpenGLRenderBackend::destroyShaderToy(ShaderToyHandle handle) {
+    flushRoundedRectBatch();
     auto* toy = static_cast<OpenGLShaderToy*>(handle);
     if (toy == nullptr) return;
     OpenGLStateScope state;
@@ -689,6 +692,7 @@ void OpenGLRenderBackend::destroyShaderToy(ShaderToyHandle handle) {
 }
 
 bool OpenGLRenderBackend::readShaderToyPixel(ShaderToyHandle handle, float* rgba) {
+    flushRoundedRectBatch();
     auto* toy = static_cast<OpenGLShaderToy*>(handle);
     if (toy == nullptr || rgba == nullptr) return false;
     std::vector<float> pixels(
@@ -702,6 +706,7 @@ bool OpenGLRenderBackend::readShaderToyPixel(ShaderToyHandle handle, float* rgba
 bool OpenGLRenderBackend::readShaderToyPixels(ShaderToyHandle handle,
                                               float* rgba,
                                               std::size_t floatCount) {
+    flushRoundedRectBatch();
     auto* toy = static_cast<OpenGLShaderToy*>(handle);
     if (toy == nullptr || rgba == nullptr || !toy->hasOutput || toy->output.texture == 0) {
         return false;
@@ -719,6 +724,7 @@ bool OpenGLRenderBackend::readShaderToyPixels(ShaderToyHandle handle,
 }
 
 void OpenGLRenderBackend::releaseShaderToys() {
+    flushRoundedRectBatch();
     std::vector<ShaderToyHandle> resources = std::move(shaderToys_);
     shaderToys_.clear();
     for (ShaderToyHandle handle : resources) {
