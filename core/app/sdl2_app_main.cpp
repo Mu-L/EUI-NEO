@@ -18,6 +18,7 @@
 #endif
 
 #include "eui/app.h"
+#include "eui/detail/dsl_app_impl.h"
 #include "core/app/app_runner.h"
 #include "core/app/dsl_window_manager.h"
 #include "core/app/dsl_window_runtime.h"
@@ -38,6 +39,7 @@ namespace {
 
 struct WindowState : app::AppRunner {
     bool running = true;
+    bool hideToTrayRequested = false;
     core::render::RenderBackend* renderBackend = nullptr;
 #if defined(EUI_RENDER_BACKEND_OPENGL) && (defined(_WIN32) || defined(__APPLE__))
     // SDL2 can expose the OpenGL window before the drawable/backbuffer settles.
@@ -103,9 +105,19 @@ float dpiScale(SDL_Window* window) {
 #ifdef _WIN32
     HWND hwnd = static_cast<HWND>(core::window::nativeWindowInfo(window).platformWindow);
     if (hwnd != nullptr) {
-        const UINT dpi = GetDpiForWindow(hwnd);
-        if (dpi > 0) {
-            return static_cast<float>(dpi) / 96.0f;
+        using GetDpiForWindowFunction = UINT(WINAPI*)(HWND);
+        static const GetDpiForWindowFunction getDpiForWindow = [] {
+            HMODULE user32 = GetModuleHandleW(L"user32.dll");
+            return user32 != nullptr
+                ? reinterpret_cast<GetDpiForWindowFunction>(
+                      GetProcAddress(user32, "GetDpiForWindow"))
+                : nullptr;
+        }();
+        if (getDpiForWindow != nullptr) {
+            const UINT dpi = getDpiForWindow(hwnd);
+            if (dpi > 0) {
+                return static_cast<float>(dpi) / 96.0f;
+            }
         }
     }
 #endif
@@ -126,6 +138,20 @@ void detachNativeChildWindow(SDL_Window* parentWindow, SDL_Window* childWindow) 
 
 void updateFrameInterval(SDL_Window* window, WindowState& state) {
     state.updateFrameInterval(refreshRate(window), core::window::timeSeconds());
+}
+
+Uint32 windowIdForEvent(const SDL_Event& event) {
+    switch (event.type) {
+    case SDL_WINDOWEVENT: return event.window.windowID;
+    case SDL_KEYDOWN: return event.key.windowID;
+    case SDL_TEXTINPUT: return event.text.windowID;
+    case SDL_TEXTEDITING: return event.edit.windowID;
+    case SDL_MOUSEWHEEL: return event.wheel.windowID;
+    case SDL_MOUSEMOTION: return event.motion.windowID;
+    case SDL_MOUSEBUTTONDOWN:
+    case SDL_MOUSEBUTTONUP: return event.button.windowID;
+    default: return 0;
+    }
 }
 
 bool mapKey(SDL_Keycode key, core::InputKey& mapped) {
@@ -151,6 +177,83 @@ bool mapKey(SDL_Keycode key, core::InputKey& mapped) {
     }
 }
 
+bool processInputEvent(SDL_Window* window,
+                       const SDL_Event& event,
+                       bool inputEnabled,
+                       bool& repaintRequested) {
+    repaintRequested = false;
+    switch (event.type) {
+    case SDL_MOUSEMOTION:
+        core::queuePointerMotion(window,
+                                 event.motion.x,
+                                 event.motion.y,
+                                 (event.motion.state & SDL_BUTTON_LMASK) != 0,
+                                 (event.motion.state & SDL_BUTTON_RMASK) != 0);
+        repaintRequested = inputEnabled;
+        return true;
+    case SDL_MOUSEBUTTONDOWN:
+    case SDL_MOUSEBUTTONUP:
+        if (event.button.button == SDL_BUTTON_LEFT || event.button.button == SDL_BUTTON_RIGHT) {
+            core::queuePointerButton(window,
+                                     event.button.x,
+                                     event.button.y,
+                                     event.button.button == SDL_BUTTON_RIGHT ? 1 : 0,
+                                     event.type == SDL_MOUSEBUTTONDOWN);
+        }
+        repaintRequested = inputEnabled;
+        return true;
+    case SDL_TEXTINPUT:
+        if (inputEnabled) {
+            core::queueTextInput(window, event.text.text);
+            repaintRequested = true;
+        }
+        return true;
+    case SDL_TEXTEDITING:
+        if (inputEnabled) {
+            core::queueTextEditing(window, event.edit.text);
+            repaintRequested = true;
+        }
+        return true;
+    case SDL_MOUSEWHEEL:
+        if (inputEnabled) {
+            core::queueScrollInput(window, event.wheel.preciseX, event.wheel.preciseY);
+            repaintRequested = true;
+        }
+        return true;
+    case SDL_KEYDOWN: {
+        core::InputKey key;
+        if (inputEnabled && mapKey(event.key.keysym.sym, key)) {
+            const bool shortcut = (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI)) != 0;
+            const bool shift = (event.key.keysym.mod & KMOD_SHIFT) != 0;
+            const core::KeyAction action =
+                event.key.repeat != 0 ? core::KeyAction::Repeat : core::KeyAction::Press;
+            core::queueKeyInput(window, {key, action, {shortcut, shift}});
+            repaintRequested = true;
+        }
+        return true;
+    }
+    case SDL_WINDOWEVENT:
+        if (event.window.event == SDL_WINDOWEVENT_ENTER) {
+            core::queuePointerPresence(window, true);
+            repaintRequested = inputEnabled;
+            return true;
+        }
+        if (event.window.event == SDL_WINDOWEVENT_LEAVE) {
+            core::queuePointerPresence(window, false);
+            repaintRequested = inputEnabled;
+            return true;
+        }
+        if (event.window.event == SDL_WINDOWEVENT_HIDDEN ||
+            event.window.event == SDL_WINDOWEVENT_MINIMIZED ||
+            event.window.event == SDL_WINDOWEVENT_CLOSE) {
+            core::clearPointerInput(window);
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
 void hideToTray(SDL_Window* window, WindowState& state) {
     if (!state.trayAvailable || state.hiddenToTray) {
         return;
@@ -165,7 +268,9 @@ void hideToTray(SDL_Window* window, WindowState& state) {
     }
     SDL_HideWindow(window);
     state.hiddenToTray = true;
+    state.hideToTrayRequested = false;
     state.paintRequested = false;
+    state.resetTiming(core::window::timeSeconds());
 }
 
 void restoreFromTray(SDL_Window* window, WindowState& state) {
@@ -175,13 +280,15 @@ void restoreFromTray(SDL_Window* window, WindowState& state) {
     SDL_ShowWindow(window);
     SDL_RaiseWindow(window);
     state.hiddenToTray = false;
+    state.hideToTrayRequested = false;
     state.paintRequested = true;
     app::detail::requestFullPaint();
+    state.resetTiming(core::window::timeSeconds());
 }
 
-void requestClose(SDL_Window* window, WindowState& state) {
+void requestClose(WindowState& state) {
     if (state.trayAvailable) {
-        hideToTray(window, state);
+        state.hideToTrayRequested = true;
     } else {
         state.running = false;
     }
@@ -189,42 +296,12 @@ void requestClose(SDL_Window* window, WindowState& state) {
 
 void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& event, bool inputEnabled) {
     if (event.type == SDL_QUIT) {
-        requestClose(window, state);
+        requestClose(state);
         return;
     }
-    if (event.type == SDL_TEXTINPUT) {
-        if (!inputEnabled) {
-            return;
-        }
-        core::queueTextInput(window, event.text.text);
-        state.paintRequested = true;
-        return;
-    }
-    if (event.type == SDL_TEXTEDITING) {
-        if (!inputEnabled) {
-            return;
-        }
-        core::queueTextEditing(window, event.edit.text);
-        state.paintRequested = true;
-        return;
-    }
-    if (event.type == SDL_MOUSEWHEEL) {
-        if (!inputEnabled) {
-            return;
-        }
-        core::queueScrollInput(window, event.wheel.preciseX, event.wheel.preciseY);
-        state.paintRequested = true;
-        return;
-    }
-    if (event.type == SDL_KEYDOWN) {
-        if (!inputEnabled) {
-            return;
-        }
-        const bool ctrl = (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI)) != 0;
-        const bool shift = (event.key.keysym.mod & KMOD_SHIFT) != 0;
-        core::InputKey key;
-        if (mapKey(event.key.keysym.sym, key)) {
-            core::queueKeyInput(window, key, ctrl, shift);
+    bool repaintRequested = false;
+    if (processInputEvent(window, event, inputEnabled, repaintRequested)) {
+        if (repaintRequested) {
             state.paintRequested = true;
         }
         return;
@@ -232,7 +309,9 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
     if (event.type == SDL_WINDOWEVENT) {
         switch (event.window.event) {
         case SDL_WINDOWEVENT_CLOSE:
-            requestClose(window, state);
+            if (inputEnabled) {
+                requestClose(state);
+            }
             break;
         case SDL_WINDOWEVENT_MINIMIZED:
             break;
@@ -345,27 +424,9 @@ ManagedWindow* findModalWindow(app::DslWindowManager<ManagedWindow>& windows) {
 }
 
 void processManagedEvent(ManagedWindow& managed, const SDL_Event& event) {
-    if (event.type == SDL_TEXTINPUT) {
-        core::queueTextInput(managed.window, event.text.text);
-        managed.content.requestPaint();
-        return;
-    }
-    if (event.type == SDL_TEXTEDITING) {
-        core::queueTextEditing(managed.window, event.edit.text);
-        managed.content.requestPaint();
-        return;
-    }
-    if (event.type == SDL_MOUSEWHEEL) {
-        core::queueScrollInput(managed.window, event.wheel.preciseX, event.wheel.preciseY);
-        managed.content.requestPaint();
-        return;
-    }
-    if (event.type == SDL_KEYDOWN) {
-        const bool ctrl = (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI)) != 0;
-        const bool shift = (event.key.keysym.mod & KMOD_SHIFT) != 0;
-        core::InputKey key;
-        if (mapKey(event.key.keysym.sym, key)) {
-            core::queueKeyInput(managed.window, key, ctrl, shift);
+    bool repaintRequested = false;
+    if (processInputEvent(managed.window, event, true, repaintRequested)) {
+        if (repaintRequested) {
             managed.content.requestPaint();
         }
         return;
@@ -485,6 +546,7 @@ int main() {
             if (SDL_WaitEventTimeout(&event, 100)) {
                 processMainEvent(window, state, event, true);
             }
+            state.resetTiming(core::window::timeSeconds());
             continue;
         }
 
@@ -493,14 +555,8 @@ int main() {
         if (!animating) {
             SDL_Event event{};
             if (SDL_WaitEventTimeout(&event, 100)) {
-                if (event.type == SDL_WINDOWEVENT || event.type == SDL_KEYDOWN ||
-                    event.type == SDL_TEXTINPUT || event.type == SDL_TEXTEDITING ||
-                    event.type == SDL_MOUSEWHEEL) {
-                    const Uint32 eventWindowId = event.type == SDL_WINDOWEVENT ? event.window.windowID :
-                        event.type == SDL_KEYDOWN ? event.key.windowID :
-                        event.type == SDL_TEXTINPUT ? event.text.windowID :
-                        event.type == SDL_TEXTEDITING ? event.edit.windowID :
-                        event.wheel.windowID;
+                const Uint32 eventWindowId = windowIdForEvent(event);
+                if (eventWindowId != 0) {
                     if (ManagedWindow* managed = findWindow(childWindows, eventWindowId)) {
                         processManagedEvent(*managed, event);
                     } else {
@@ -519,14 +575,8 @@ int main() {
 
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_WINDOWEVENT || event.type == SDL_KEYDOWN ||
-                event.type == SDL_TEXTINPUT || event.type == SDL_TEXTEDITING ||
-                event.type == SDL_MOUSEWHEEL) {
-                const Uint32 eventWindowId = event.type == SDL_WINDOWEVENT ? event.window.windowID :
-                    event.type == SDL_KEYDOWN ? event.key.windowID :
-                    event.type == SDL_TEXTINPUT ? event.text.windowID :
-                    event.type == SDL_TEXTEDITING ? event.edit.windowID :
-                    event.wheel.windowID;
+            const Uint32 eventWindowId = windowIdForEvent(event);
+            if (eventWindowId != 0) {
                 if (ManagedWindow* managed = findWindow(childWindows, eventWindowId)) {
                     processManagedEvent(*managed, event);
                 } else {
@@ -537,6 +587,12 @@ int main() {
             }
         }
         pruneClosedWindows(childWindows);
+        if (state.hideToTrayRequested && !childWindows.empty()) {
+            state.hideToTrayRequested = false;
+        }
+        if (state.hideToTrayRequested) {
+            hideToTray(window, state);
+        }
         if (!state.running || state.hiddenToTray) {
             continue;
         }

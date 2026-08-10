@@ -215,6 +215,7 @@ bool VulkanRenderBackend::hasCurrentCommandBuffer() const {
 }
 
 void VulkanRenderBackend::endActiveRenderPass() {
+    flushRoundedRectBatch();
     if (!renderPassActive_ || !hasCurrentCommandBuffer()) {
         return;
     }
@@ -335,6 +336,11 @@ void VulkanRenderBackend::beginFrame(const RenderSurface& surface) {
     activeLayer_ = nullptr;
     backdropReady_ = false;
     primitiveVertices_.used = 0;
+    roundedRectBatchVertices_.used = 0;
+    roundedRectBatchStart_ = 0;
+    roundedRectBatchCount_ = 0;
+    roundedRectBatchWindowWidth_ = 0;
+    roundedRectBatchWindowHeight_ = 0;
     polygonEdges_.used = 0;
     textVertices_.used = 0;
     imageVertices_.used = 0;
@@ -429,6 +435,7 @@ void VulkanRenderBackend::present() {
 }
 
 void VulkanRenderBackend::clear(const core::Color& color) {
+    flushRoundedRectBatch();
     clearColor_ = color;
     if (!frameActive_) {
         return;
@@ -460,6 +467,7 @@ void VulkanRenderBackend::clear(const core::Color& color) {
 }
 
 void VulkanRenderBackend::setScissor(bool enabled, const core::Rect& rect, int) {
+    flushRoundedRectBatch();
     scissorEnabled_ = enabled;
     scissorRect_ = rect;
 }

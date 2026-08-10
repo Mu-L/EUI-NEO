@@ -117,6 +117,7 @@ void VulkanRenderBackend::drawTexture(TextureHandle handle,
         vertexFloatCount < 42 || tint.a <= 0.001f || windowWidth <= 0 || windowHeight <= 0) {
         return;
     }
+    flushRoundedRectBatch();
     if (!ensureImagePipeline(false)) {
         return;
     }
@@ -223,9 +224,6 @@ bool VulkanRenderBackend::beginLayerFrame(LayerHandle handle, int width, int hei
     renderTarget_ = RenderTarget::Layer;
     renderingToCache_ = false;
     activeLayer_ = layer;
-    primitiveVertices_.used = 0;
-    textVertices_.used = 0;
-    imageVertices_.used = 0;
     return true;
 }
 
@@ -239,6 +237,7 @@ void VulkanRenderBackend::endLayerFrame() {
     renderTarget_ = previousLayerTarget_;
     renderingToCache_ = renderTarget_ == RenderTarget::RenderCache;
     previousLayerTarget_ = RenderTarget::Swapchain;
+    beginLoadPass();
 }
 
 VulkanRenderBackend::TextureHandle VulkanRenderBackend::layerTexture(LayerHandle handle) {
@@ -260,6 +259,7 @@ void VulkanRenderBackend::drawLayerTexture(TextureHandle handle,
         vertexFloatCount < 42 || windowWidth <= 0 || windowHeight <= 0) {
         return;
     }
+    flushRoundedRectBatch();
     if (texture->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         endActiveRenderPass();
         transitionImageLayout(currentCommandBuffer(),

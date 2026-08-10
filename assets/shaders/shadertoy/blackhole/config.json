@@ -1,40 +1,38 @@
 {
-  "version": 1,
   "passes": [
     {
-      "name": "pass0",
+      "name": "A",
       "source": "1.frag",
-      "channels": [
-        {"kind": "image", "source": "color_noise.png"},
-        {"kind": "image", "source": "london.png"},
-        {"kind": "self"},
-        {"kind": "none"}
-      ]
+      "channels": {
+        "0": "image:color_noise.png",
+        "1": "image:london.png",
+        "2": "self"
+      }
     },
     {
-      "name": "pass1",
+      "name": "B",
       "source": "2.frag",
-      "channels": [{"kind": "buffer", "source": "pass0"}]
+      "channels": {"0": "A"}
     },
     {
-      "name": "pass2",
+      "name": "C",
       "source": "3.frag",
-      "channels": [{"kind": "buffer", "source": "pass1"}]
+      "channels": {"0": "B"}
     },
     {
-      "name": "pass3",
+      "name": "D",
       "source": "4.frag",
-      "channels": [{"kind": "buffer", "source": "pass2"}]
+      "channels": {"0": "C"}
     },
     {
-      "name": "pass4",
+      "name": "Image",
       "source": "5.frag",
-      "channels": [
-        {"kind": "buffer", "source": "pass0"},
-        {"kind": "buffer", "source": "pass1"},
-        {"kind": "buffer", "source": "pass2"},
-        {"kind": "buffer", "source": "pass3"}
-      ]
+      "channels": {
+        "0": "A",
+        "1": "B",
+        "2": "C",
+        "3": "D"
+      }
     }
   ]
 }

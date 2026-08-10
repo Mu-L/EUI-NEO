@@ -103,8 +103,8 @@ graph 帧；`Self` 以及对相同或较晚 Pass 的引用读取上一 graph 帧
 ## 文件、Inline 源码和 Vulkan
 
 OpenGL 由驱动编译文件或 inline GLSL。Vulkan 运行时不启动或链接 Shader 编译器；
-每个 Pass 必须提供有效 SPIR-V 路径。文件 Pass 未显式指定时使用
-`<source>.spv`，inline Pass 应显式提供路径。
+每个 Pass 使用有效 SPIR-V 路径。文件 Pass 未显式指定时使用 `<source>.spv`，inline
+Pass 在 Vulkan 配置中必须显式提供路径。
 
 只构建 OpenGL 应用时，直接把 `.frag` 文件路径交给 graph 即可，不需要为 Shader
 修改 CMake：
@@ -114,11 +114,21 @@ eui::ShaderToyGraph graph;
 graph.addPass("image", "assets/shaders/shadertoy/demo.frag");
 ```
 
-同一应用需要支持 Vulkan 时，才需要在构建期生成 SPIR-V，并将生成文件的路径作为
-`addPass()` 的第三个参数传入。CMake 只负责生成 SPIR-V；`.frag` 和图片仍可在 C++
-或 JSON 中使用普通资源路径，不需要通过 CMake 宏传入。
+同一应用需要支持 Vulkan 时，才需要在构建期生成 SPIR-V。对于 JSON 配置，推荐
+使用配置级 helper；它会读取所有 Pass 和 uniform，不需要在构建脚本中重复列出 shader
+文件：
 
-Vulkan 应用可以直接提供预生成 SPIR-V，也可以在应用构建期生成：
+```cmake
+eui_compile_shadertoy_config(my_app
+    CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/shaders/effect/config.json"
+    ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+    OUTPUT_ROOT "${CMAKE_CURRENT_BINARY_DIR}/assets/shaders")
+```
+
+`OUTPUT_ROOT` 对应运行时资源树的 `ASSET_ROOT`，生成的 `.spv` 路径与配置中的相对
+`spirv` 路径一致。`.frag` 和图片仍由普通资源部署逻辑复制，不需要通过 CMake 宏传入。
+
+对于不使用 JSON 的单个 Shader，仍可直接使用低级 helper：
 
 ```cmake
 if(EUI_NEO_RENDER_BACKEND STREQUAL "vulkan" OR
@@ -137,7 +147,8 @@ if(EUI_NEO_RENDER_BACKEND STREQUAL "vulkan" OR
 endif()
 ```
 
-helper 和 Vulkan SDK 的 `glslangValidator` 只属于构建机工具，不链接到 `eui::neo`，
+配置 helper 需要 Python 3 和 Vulkan SDK 的 `glslangValidator`；这些工具只属于构建机，
+不链接到 `eui::neo`，
 不复制到运行包，也不会被纯 OpenGL 配置探测。`UNIFORMS` 使用 `name:type`，名称和
 类型必须与 graph 一致。
 
@@ -150,48 +161,47 @@ helper 和 Vulkan SDK 的 `glslangValidator` 只属于构建机工具，不链�
 `eui::parseShaderToyGraphJson()` 解析文本并接收明确的 base directory。
 fragment、SPIR-V 和图片的相对路径都以该目录为基准。
 
-版本化 EUI 契约使用 `version: 1`：
+EUI Shadertoy 只有一种 JSON 配置契约，不使用版本字段。配置文件是唯一的 Pass 图描述，
+CMake 和 xmake 会从该文件自动发现所有 Pass，并在 Vulkan 构建中生成对应的 SPIR-V 文件。
 
 ```json
 {
   "$schema": "../eui-shadertoy.schema.json",
-  "version": 1,
   "passes": [
     {
-      "name": "bufferA",
-      "source": "buffer.frag",
-      "spirv": "generated/buffer.frag.spv",
-      "channels": [
-        {"kind": "self"}
-      ]
+      "name": "A",
+      "source": "A.frag",
+      "channels": {
+        "0": "image:noise.png",
+        "2": "self"
+      }
     },
     {
-      "name": "image",
-      "inlineSource": "void mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, p / iResolution.xy); }",
-      "sourceName": "image-inline.frag",
-      "spirv": "generated/image.inline.spv",
-      "channels": [
-        {"kind": "buffer", "source": "bufferA"},
-        {"kind": "image", "source": "noise.png"},
-        {"kind": "none"}
-      ]
+      "name": "Image",
+      "source": "Image.frag",
+      "channels": {
+        "0": "A",
+        "1": "buffer:A"
+      }
     }
-  ],
-  "uniforms": [
-    {"name": "uAmount", "type": "float", "value": 0.75}
   ]
 }
 ```
 
-每个 Pass 都需要唯一的非空 `name`，且必须在 `source` 与 `inlineSource` 中二选一。
-可选字段是 `sourceName`、`spirv` 和最多四路 `channels`。可序列化的通道 kind
-只有 `none`、`image`、`buffer`、`self`。自定义 uniform 支持 `float`、
-`int`、`vec2`、`vec3`、`vec4`，最多 16 个。
+`channels` 是按 channel 下标索引的对象，未填写的槽位自动为 `none`。通道值支持
+`none`、`self`、`buffer:PassName`、`image:path/to/image.png`；裸字符串也按 Buffer
+名称处理，因此 `"A"` 等价于 `"buffer:A"`。Pass 顺序是执行顺序，最后一个 Pass
+是 graph 输出。每个 Pass 必须提供唯一的 `name`，并且只能提供 `source` 或
+`inlineSource` 其中之一。自定义 uniform 支持 `float`、`int`、`vec2`、`vec3`、`vec4`，
+最多 16 个。
+
+`spirv` 对文件 Pass 可省略，默认值为 `<source>.spv`；inline Pass 在 Vulkan 构建中
+必须显式提供 `spirv`。相对路径以配置文件所在目录为基准。
 
 机器可读 schema 位于
 [`assets/shaders/shadertoy/eui-shadertoy.schema.json`](../assets/shaders/shadertoy/eui-shadertoy.schema.json)。
-importer 也可直接接受数组式 `config.json`。仓库内 Blackhole、Fish 副本使用语义等价的
-EUI v1 形式，使同一批资源同时覆盖版本化公共 schema。
+仓库内 Blackhole 和 Fish 预设均使用该契约。根对象只需要 `passes`，不得提供
+`version` 字段；旧数组格式不属于当前公共接口。
 
 ## Uniform 契约
 
@@ -222,7 +232,7 @@ EUI v1 形式，使同一批资源同时覆盖版本化公共 schema。
 | --- | --- | --- |
 | 文件 `mainImage()` | 驱动编译 | 预生成或构建期 SPIR-V |
 | Inline `mainImage()` | 驱动从内存编译 | 显式预生成或构建期 SPIR-V |
-| EUI v1 JSON / 数组式预设导入 | 支持 | 支持，每个 Pass 仍需 SPIR-V |
+| JSON 预设导入 | 支持 | 支持，构建期自动生成每个 Pass 的 SPIR-V |
 | Image / Buffer / Self / None | 四路 `sampler2D` | 四路 `sampler2D` |
 | 多 Pass feedback | 固定 RGBA32F ping-pong | 固定 RGBA32F ping-pong |
 | 标准和自定义 uniform | 支持 | 支持 |

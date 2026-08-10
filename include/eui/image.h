@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/render/image_types.h"
 #include "eui/types.h"
 
 #include <string>

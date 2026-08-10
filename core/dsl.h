@@ -5,7 +5,6 @@
 #include "core/layout.h"
 #include "core/animation.h"
 #include "core/input/input_types.h"
-#include "core/render/image_types.h"
 #include "core/render/render_types.h"
 #include "core/render/text.h"
 #include "core/render/text_types.h"

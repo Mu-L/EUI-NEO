@@ -65,6 +65,7 @@ static const DslAppConfig config = DslAppConfig{}
     .pageId("clock")
     .clearColor({0.965f, 0.966f, 0.970f, 1.0f})
     .windowSize(1600, 1080)
+    .uiScale(1.25f)
     .fps(90.0)
     .textFont("YouSheBiaoTiHei-2.ttf");
 ```
@@ -371,8 +372,8 @@ const eui::Color accent = eui::image::themeColor(
 ## Shadertoy DSL
 
 Shadertoy 是后端无关的 `mainImage()` fragment 图元，使用固定四边形 vertex shader。
-同一个 `ShaderToyGraph` 支持文件/inline source、EUI JSON 和数组式预设导入、按顺序执行的
-多 Pass，以及四路 `sampler2D`。通道 kind 固定为
+同一个 `ShaderToyGraph` 支持文件/inline source、EUI JSON、按顺序执行的多
+Pass，以及四路 `sampler2D`。通道 kind 固定为
 `ShaderToyChannel::image()`、`buffer()`、`self()`、`none()`；所有 Pass 使用同一
 目标尺寸和固定 RGBA32F ping-pong feedback。图片采样固定为 linear/repeat，
 Buffer/Self/None 固定为 linear/clamp。

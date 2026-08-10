@@ -191,6 +191,10 @@ private:
                                 int height);
     VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) const;
     bool ensureRoundedRectPipeline();
+    bool ensureRoundedRectBatchPipeline();
+    bool ensureRoundedRectBatchVertexBuffer(std::size_t vertexCount);
+    bool appendRoundedRectBatch(const RoundedRectDrawCommand& command, int windowWidth, int windowHeight);
+    void flushRoundedRectBatch();
     bool ensurePolygonPipeline();
     bool ensurePolygonEdgeBuffer(std::size_t edgeCount);
     bool ensureBackdropResources(std::uint32_t width, std::uint32_t height);
@@ -209,6 +213,7 @@ private:
     bool createUploadBuffer(VkDeviceSize capacity);
     void destroyUploadBuffer();
     void destroyRoundedRectPipeline();
+    void destroyRoundedRectBatchResources();
     void destroyPolygonPipeline();
     void destroyPolygonEdgeBuffer();
     void destroyBackdropResources();
@@ -273,6 +278,8 @@ private:
     VkDescriptorSet roundedRectDescriptorSet_ = VK_NULL_HANDLE;
     VkPipelineLayout roundedRectPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline roundedRectPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout roundedRectBatchPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline roundedRectBatchPipeline_ = VK_NULL_HANDLE;
     VkImage backdropImage_ = VK_NULL_HANDLE;
     VkDeviceMemory backdropImageMemory_ = VK_NULL_HANDLE;
     VkImageView backdropImageView_ = VK_NULL_HANDLE;
@@ -280,6 +287,11 @@ private:
     VkImageLayout backdropImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     VkExtent2D backdropExtent_{};
     MappedBuffer primitiveVertices_;
+    MappedBuffer roundedRectBatchVertices_;
+    std::size_t roundedRectBatchStart_ = 0;
+    std::size_t roundedRectBatchCount_ = 0;
+    int roundedRectBatchWindowWidth_ = 0;
+    int roundedRectBatchWindowHeight_ = 0;
     VkDescriptorSetLayout polygonDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool polygonDescriptorPool_ = VK_NULL_HANDLE;
     VkDescriptorSet polygonDescriptorSet_ = VK_NULL_HANDLE;

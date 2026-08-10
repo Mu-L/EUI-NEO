@@ -80,6 +80,7 @@ public:
                              std::size_t floatCount) override;
 
 private:
+    void flushRoundedRectBatch();
     void releaseShaderToys();
     void releasePrimitiveResources();
     void releasePolygonResources();
@@ -128,6 +129,9 @@ private:
     std::vector<std::uint64_t> backbufferCacheGenerations_{0, 0};
     std::vector<RenderCacheHistoryEntry> renderCacheHistory_;
     std::vector<ShaderToyHandle> shaderToys_;
+    std::vector<float> roundedRectBatchVertices_;
+    int roundedRectBatchWindowWidth_ = 0;
+    int roundedRectBatchWindowHeight_ = 0;
     std::size_t currentBackbuffer_ = 0;
     unsigned int imageVao_ = 0;
     unsigned int imageVbo_ = 0;

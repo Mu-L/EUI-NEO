@@ -40,95 +40,35 @@ std::string resolvedPath(const std::filesystem::path& base,
     return (path.is_absolute() ? path : base / path).lexically_normal().u8string();
 }
 
-bool parseArrayGraph(const eui::json::Value& passes,
-                     const std::filesystem::path& base,
-                     ShaderToyGraph& graph,
-                     ShaderToyError& error) {
-    if (passes.size() == 0) {
-        setError(error, {}, "Array graph JSON requires at least one pass.");
+bool parseCompactChannel(const eui::json::Value& value,
+                         const std::filesystem::path& base,
+                         ShaderToyChannel& channel,
+                         ShaderToyError& error) {
+    std::string spec;
+    if (!value.string(spec) || spec.empty()) {
+        setError(error, {}, "Compact channel must be a non-empty string.");
         return false;
     }
-    graph = {};
-    for (std::size_t index = 0; index < passes.size(); ++index) {
-        graph.addPass(
-            "pass" + std::to_string(index),
-            (base / "frag" /
-             (std::to_string(index + 1) + ".frag")).u8string());
-    }
-    for (std::size_t passIndex = 0; passIndex < passes.size(); ++passIndex) {
-        const eui::json::Value channels = passes.at(passIndex);
-        if (channels.type() != eui::json::Type::Array ||
-            channels.size() != kShaderToyChannelCount) {
-            setError(error, {}, "Each array pass must define four channels.");
+    if (spec == "none") {
+        channel = ShaderToyChannel::none();
+    } else if (spec == "self") {
+        channel = ShaderToyChannel::self();
+    } else if (spec.rfind("image:", 0) == 0) {
+        const std::string path = spec.substr(6);
+        if (path.empty()) {
+            setError(error, {}, "Compact image channel requires a path.");
             return false;
         }
-        for (std::size_t channelIndex = 0;
-             channelIndex < kShaderToyChannelCount;
-             ++channelIndex) {
-            const eui::json::Value value = channels.at(channelIndex);
-            int type = 0;
-            int bufferIndex = -1;
-            if (!integer(value.get("type"), type) ||
-                !integer(value.get("bufferIndex"), bufferIndex)) {
-                setError(error, {},
-                         "Array channels require integer type and bufferIndex.");
-                return false;
-            }
-            ShaderToyChannel channel = ShaderToyChannel::none();
-            if (type == 1) {
-                std::string image;
-                if (!value.get("imagePath").string(image) &&
-                    !value.get("imageName").string(image)) {
-                    setError(error, {},
-                             "Array image channel requires imagePath or imageName.");
-                    return false;
-                }
-                channel = ShaderToyChannel::image(
-                    resolvedPath(base / "iChannel", image));
-            } else if (type == 2) {
-                if (bufferIndex < 0 ||
-                    bufferIndex >= static_cast<int>(passes.size())) {
-                    setError(error, {}, "Array bufferIndex is out of range.");
-                    return false;
-                }
-                channel = bufferIndex == static_cast<int>(passIndex)
-                    ? ShaderToyChannel::self()
-                    : ShaderToyChannel::buffer(
-                          "pass" + std::to_string(bufferIndex));
-            } else if (type != 0) {
-                setError(error, {}, "Array channel type is unsupported.");
-                return false;
-            }
-            graph.setChannel("pass" + std::to_string(passIndex),
-                             channelIndex, std::move(channel));
+        channel = ShaderToyChannel::image(resolvedPath(base, path));
+    } else if (spec.rfind("buffer:", 0) == 0) {
+        const std::string passName = spec.substr(7);
+        if (passName.empty()) {
+            setError(error, {}, "Compact buffer channel requires a pass name.");
+            return false;
         }
-    }
-    return true;
-}
-
-bool parseChannel(const eui::json::Value& value,
-                  const std::filesystem::path& base,
-                  ShaderToyChannel& channel,
-                  ShaderToyError& error) {
-    if (value.type() != eui::json::Type::Object) {
-        setError(error, {}, "Channel must be an object.");
-        return false;
-    }
-    std::string kind;
-    if (!value.get("kind").string(kind)) {
-        setError(error, {}, "Channel requires a kind.");
-        return false;
-    }
-    std::string source;
-    value.get("source").string(source);
-    if (kind == "none") channel = ShaderToyChannel::none();
-    else if (kind == "self") channel = ShaderToyChannel::self();
-    else if (kind == "buffer") channel = ShaderToyChannel::buffer(source);
-    else if (kind == "image") {
-        channel = ShaderToyChannel::image(resolvedPath(base, source));
+        channel = ShaderToyChannel::buffer(passName);
     } else {
-        setError(error, {}, "Unknown Shadertoy channel kind: " + kind);
-        return false;
+        channel = ShaderToyChannel::buffer(spec);
     }
     return true;
 }
@@ -138,9 +78,9 @@ bool parseEuiGraph(const eui::json::Value& root,
                    const std::filesystem::path& base,
                    ShaderToyGraph& graph,
                    ShaderToyError& error) {
-    int version = 0;
-    if (!integer(root.get("version"), version) || version != 1) {
-        setError(error, {}, "EUI Shadertoy graph version must be 1.");
+    if (root.get("version").valid()) {
+        setError(error, {},
+                 "EUI Shadertoy graphs do not use a version field.");
         return false;
     }
     graph = {};
@@ -178,18 +118,20 @@ bool parseEuiGraph(const eui::json::Value& root,
         }
         const eui::json::Value channels = value.get("channels");
         if (channels.valid()) {
-            if (channels.type() != eui::json::Type::Array ||
-                channels.size() > kShaderToyChannelCount) {
+            if (channels.type() != eui::json::Type::Object) {
                 setError(error, {},
-                         "Pass channels must be an array of at most four entries.");
+                         "Pass channels must be an object keyed by 0-3.");
                 return false;
             }
             for (std::size_t channelIndex = 0;
-                 channelIndex < channels.size();
+                 channelIndex < kShaderToyChannelCount;
                  ++channelIndex) {
+                const eui::json::Value channelValue =
+                    channels.get(std::to_string(channelIndex));
+                if (!channelValue.valid()) continue;
                 ShaderToyChannel channel;
-                if (!parseChannel(channels.at(channelIndex), base,
-                                  channel, error)) {
+                if (!parseCompactChannel(channelValue, base,
+                                         channel, error)) {
                     return false;
                 }
                 graph.setChannel(name, channelIndex, std::move(channel));
@@ -292,11 +234,7 @@ bool parseShaderToyGraphJson(const std::string& json,
     }
     const std::filesystem::path base =
         std::filesystem::u8path(baseDirectory);
-    const bool parsed = passes.size() > 0 &&
-                        passes.at(0).type() == eui::json::Type::Array
-        ? parseArrayGraph(passes, base, graph, error)
-        : parseEuiGraph(root, passes, base, graph, error);
-    if (!parsed) return false;
+    if (!parseEuiGraph(root, passes, base, graph, error)) return false;
     const ShaderToyValidationResult validation =
         validateShaderToyGraph(graph);
     if (!validation.valid()) {

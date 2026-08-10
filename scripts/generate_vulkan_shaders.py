@@ -23,11 +23,13 @@ GROUPS = [
     },
     {
         "name": "RoundedRect",
-        "comment": "rounded_rect.vert and rounded_rect.frag",
+        "comment": "rounded_rect*.vert and rounded_rect*.frag",
         "header": "vulkan_rounded_rect_shaders.h",
         "stages": [
             ("Vertex", "rounded_rect.vert"),
             ("Fragment", "rounded_rect.frag"),
+            ("BatchVertex", "rounded_rect_batch.vert"),
+            ("BatchFragment", "rounded_rect_batch.frag"),
         ],
     },
     {

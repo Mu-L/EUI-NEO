@@ -67,16 +67,6 @@ eui::ShaderToyGraph loadPreset(Preset preset) {
         presetError = error.message;
         return demoGraph();
     }
-#if defined(EUI_RENDER_BACKEND_VULKAN)
-    const std::filesystem::path spirvDirectory =
-        std::filesystem::u8path(
-            resourcePath(EUI_SHADERTOY_PRESET_SPIRV_DIR)) / name;
-    for (std::size_t index = 0; index < graph.passes.size(); ++index) {
-        graph.passes[index].spirvPath =
-            (spirvDirectory /
-             (std::to_string(index + 1) + ".frag.spv")).u8string();
-    }
-#endif
     presetError.clear();
     return graph;
 #else

@@ -1,13 +1,21 @@
 #include "core/render/render_backend.h"
 #include "core/window/window_backend.h"
 
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
 #if defined(EUI_RENDER_BACKEND_OPENGL)
 #include <glad/glad.h>
 #endif
+
+#if defined(EUI_WINDOW_BACKEND_SDL2)
+#ifndef SDL_MAIN_HANDLED
+#define SDL_MAIN_HANDLED
+#endif
+#include <SDL.h>
+#else
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
 #include <GLFW/glfw3.h>
+#endif
 
 #include <array>
 #include <chrono>
@@ -19,6 +27,23 @@
 #include <string>
 
 namespace {
+
+bool initializeWindowSystem() {
+#if defined(EUI_WINDOW_BACKEND_SDL2)
+    SDL_SetMainReady();
+    return SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == 0;
+#else
+    return glfwInit() == GLFW_TRUE;
+#endif
+}
+
+void shutdownWindowSystem() {
+#if defined(EUI_WINDOW_BACKEND_SDL2)
+    SDL_Quit();
+#else
+    glfwTerminate();
+#endif
+}
 
 bool near(float value, float expected) {
     return std::fabs(value - expected) < 0.015f;
@@ -94,7 +119,7 @@ void beginBackendFrame(core::window::Handle window,
 
 int main() {
     core::render::initializeRenderBackendLoader();
-    if (!glfwInit()) return 1;
+    if (!initializeWindowSystem()) return 1;
 
     core::window::WindowCreateRequest request;
     request.width = 64;
@@ -103,7 +128,7 @@ int main() {
     request.renderApi = core::render::windowRenderApi();
     core::window::Handle window = core::window::createWindow(request);
     if (window == nullptr) {
-        glfwTerminate();
+        shutdownWindowSystem();
         return 2;
     }
 
@@ -111,7 +136,7 @@ int main() {
         core::render::createRenderBackend(window);
     if (!backend || !backend->initialize()) {
         core::window::destroyWindow(window);
-        glfwTerminate();
+        shutdownWindowSystem();
         return 3;
     }
     backend->makeCurrent();
@@ -579,6 +604,6 @@ int main() {
 
     backend.reset();
     core::window::destroyWindow(window);
-    glfwTerminate();
+    shutdownWindowSystem();
     return 0;
 }

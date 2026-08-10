@@ -9,6 +9,22 @@
 int main() {
     using Model = components::input_detail::InputModel;
 
+    core::KeyboardEvent keyboard;
+    keyboard.keys = {
+        {core::InputKey::Left, core::KeyAction::Repeat, {false, true}},
+        {core::InputKey::Z, core::KeyAction::Press, {true, true}}
+    };
+    const core::KeyEvent* left = keyboard.findKey(core::InputKey::Left);
+    if (!keyboard.hasInput() || left == nullptr ||
+        left->action != core::KeyAction::Repeat || !left->modifiers.shift ||
+        !keyboard.hasShortcut(core::InputKey::Z) ||
+        keyboard.hasUnshiftedShortcut(core::InputKey::Z) ||
+        !keyboard.hasShiftedShortcut(core::InputKey::Z) ||
+        keyboard.hasShortcut(core::InputKey::Left)) {
+        std::cerr << "Generic keyboard events lost key action or modifiers\n";
+        return 1;
+    }
+
     Model::InputState state;
     state.text = "first line\nsecond line";
     state.textRevision = 1;
