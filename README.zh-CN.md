@@ -179,5 +179,5 @@ EUI-NEO 的原创源码采用 Apache License 2.0。`3rd/` 下的第三方代码�
 感谢所有为 EUI-NEO 提交代码、完善文档、报告问题和提供建议的贡献者。
 
 <a href="https://github.com/sudoevolve/EUI-NEO/graphs/contributors">
-  <img alt="EUI-NEO 贡献者" src="https://contrib.rocks/image?repo=sudoevolve/EUI-NEO">
+  <img alt="EUI-NEO 贡献者" src="https://contrib.rocks/image?repo=sudoevolve/eui-neo&max=100&columns=10">
 </a>
