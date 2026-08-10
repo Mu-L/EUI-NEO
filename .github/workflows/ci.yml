@@ -116,4 +116,4 @@ jobs:
           xmake build -j2 gallery
 
       - name: install package
-        run: xmake install -o package-xmake
+        run: xmake install -o package-xmake eui_neo

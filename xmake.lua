@@ -2,7 +2,7 @@
 -- A cross-platform, high-performance, low-overhead C++17 GPUI framework.
 -- Converted from CMakeLists.txt to an xmake build.
 -- Quick start:
---   xmake f -m release && xmake
+--   xmake f -m release --apps=y --user_apps=y && xmake build gallery
 --   xmake run gallery
 -- Backend selection:
 --   xmake f --window_backend=sdl2 --render_backend=vulkan
@@ -11,7 +11,8 @@
 set_project("EUI-NEO")
 set_version("0.5.6")
 set_xmakever("2.9.0")
-set_languages("c99", "cxx17")
+set_languages("c11", "cxx17")
+set_config("builddir", ".xmake/build")
 
 option("window_backend")
     set_default("glfw")
@@ -64,6 +65,9 @@ option("vulkan_low_latency")
 option_end()
 
 function eui_apply_compile_options(target)
+    if not is_mode("debug") then
+        target:add("defines", "NDEBUG")
+    end
     if target:is_plat("windows") and not target:is_plat("mingw") then
         target:add("cxflags", "/utf-8")
         if not is_mode("debug") then
@@ -74,7 +78,19 @@ function eui_apply_compile_options(target)
     end
 end
 
-function eui_apply_app_link_options(target)
+function eui_apply_app_options(target)
+    if not is_mode("debug") then
+        target:add("defines", "NDEBUG")
+    end
+    if target:is_plat("windows") and not target:is_plat("mingw") then
+        target:add("cxflags", "/utf-8")
+        if not is_mode("debug") then
+            target:add("cxflags", "/O1", "/GS-", "/sdl-", "/wd4819")
+        end
+    elseif not is_mode("debug") then
+        target:add("cxxflags", "-Os", "-fno-exceptions", "-fno-rtti")
+    end
+
     if target:is_plat("mingw") then
         target:add("ldflags", "-mwindows", {force = true})
         if not is_mode("debug") then
@@ -92,7 +108,18 @@ function eui_apply_app_link_options(target)
     elseif not is_mode("debug") then
         target:add("ldflags", "-Wl,--gc-sections", "-s")
     end
+
+    if target:is_plat("windows") and os.exists("assets/icon.ico") then
+        local icon_resource = path.join(target:autogendir(), "eui_app_icon.rc")
+        local icon_path = path.absolute("assets/icon.ico", os.projectdir()):gsub("\\", "/")
+        os.mkdir(path.directory(icon_resource))
+        local icon_file = io.open(icon_resource, "w")
+        icon_file:write('IDI_APP_ICON ICON "' .. icon_path .. '"\n')
+        icon_file:close()
+        target:add("files", icon_resource)
+    end
 end
+
 -- =============================================================================
 -- Resolve backends
 -- =============================================================================
@@ -136,21 +163,16 @@ if window_backend == "glfw" then
     add_requires("glfw", {configs = {shared = false}})
 end
 if window_backend == "sdl2" then
-    add_requires("sdl2", {configs = {shared = false}})
+    add_requires("libsdl2", {configs = {shared = false}})
 end
 if render_backend == "vulkan" then
-    add_requires("vulkan")
+    add_requires("vulkansdk", {system = true})
 end
 if not is_plat("windows", "mingw") then
     add_requires("libcurl", {configs = {shared = false}})
 end
 
-local c_source_flags = {}
-if is_plat("windows") then
-    table.insert(c_source_flags, "/TC")
-end
-
-local bridge_source_flags = table.copy(c_source_flags)
+local bridge_source_flags = {}
 if is_plat("macosx") then
     table.insert(bridge_source_flags, "-x")
     table.insert(bridge_source_flags, "objective-c")
@@ -162,7 +184,7 @@ end
 if render_backend == "opengl" then
     target("eui_glad")
         set_kind("static")
-        add_files("3rd/glad/src/glad.c", {force = {cxflags = c_source_flags}})
+        add_files("3rd/glad/src/glad.c", {sourcekind = "cc"})
         add_includedirs("3rd/glad/include", {public = true})
     target_end()
 end
@@ -170,7 +192,7 @@ end
 if enable_markdown then
     target("eui_md4c")
         set_kind("static")
-        add_files("3rd/md4c/src/md4c.c", {force = {cxflags = c_source_flags}})
+        add_files("3rd/md4c/src/md4c.c", {sourcekind = "cc"})
         add_includedirs("3rd/md4c/src", {public = true})
     target_end()
 end
@@ -202,9 +224,9 @@ target("eui_neo")
         "core/window/window_input_backend.cpp"
     )
 
-    add_files("3rd/yyjson-0.12.0/src/yyjson.c", {force = {cxflags = c_source_flags}})
+    add_files("3rd/yyjson-0.12.0/src/yyjson.c", {sourcekind = "cc"})
     add_files("core/platform/native_bridge.c", "core/platform/tray_bridge.c",
-        {force = {cxflags = bridge_source_flags}})
+        {sourcekind = "cc", force = {cxflags = bridge_source_flags}})
 
     if render_backend == "opengl" then
         add_files(
@@ -228,7 +250,7 @@ target("eui_neo")
 
     if window_backend == "glfw" then
         add_files("core/platform/ime_bridge.c",
-            {force = {cxflags = bridge_source_flags}})
+            {sourcekind = "cc", force = {cxflags = bridge_source_flags}})
     end
 
     add_includedirs("include", ".", "3rd/tray", {public = true})
@@ -273,12 +295,12 @@ target("eui_neo")
             add_frameworks("OpenGL", {public = true})
         end
     elseif render_backend == "vulkan" then
-        add_packages("vulkan", {public = true})
+        add_packages("vulkansdk", {public = true})
     end
     if window_backend == "glfw" then
         add_packages("glfw", {public = true})
     elseif window_backend == "sdl2" then
-        add_packages("sdl2", {public = true})
+        add_packages("libsdl2", {public = true})
     end
     add_packages("libcurl", {public = true, optional = true})
     if not is_plat("windows", "mingw") and has_package("libcurl") then
@@ -387,13 +409,10 @@ rule("eui.app")
     on_load(function(target)
         target:add("deps", "eui_app", "eui_runtime_assets")
     end)
-    on_config(function(target)
-        eui_apply_compile_options(target)
-        eui_apply_app_link_options(target)
-    end)
+    on_config(eui_apply_app_options)
 rule_end()
 
-function eui_compile_shadertoy(target, source, output)
+function eui_build_shadertoy_assets(target)
     local wrapper = target:dep("eui_shadertoy_wrap")
     assert(wrapper, "missing eui_shadertoy_wrap dependency")
 
@@ -407,48 +426,41 @@ function eui_compile_shadertoy(target, source, output)
     local validator = find_tool("glslangValidator", {paths = search_paths})
     assert(validator, "Vulkan SDK glslangValidator is required to generate Shadertoy SPIR-V")
 
-    local source_path = path.absolute(source, os.projectdir())
-    local output_path = path.absolute(output, target:targetdir())
-    local wrapped_path = path.join(target:autogendir(), "shadertoy", path.filename(output) .. ".wrapped.frag")
-    os.mkdir(path.directory(output_path))
-    os.mkdir(path.directory(wrapped_path))
-    os.vrunv(wrapper:targetfile(), {"--input", source_path, "--output", wrapped_path})
-    os.vrunv(validator.program, {"-V", "-S", "frag", wrapped_path, "-o", output_path})
-end
+    local function compile(source, output)
+        local source_path = path.absolute(source, os.projectdir())
+        local output_path = path.absolute(output, target:targetdir())
+        local wrapped_path = path.join(target:autogendir(), "shadertoy", path.filename(output) .. ".wrapped.frag")
+        os.mkdir(path.directory(output_path))
+        os.mkdir(path.directory(wrapped_path))
+        os.vrunv(wrapper:targetfile(), {"--input", source_path, "--output", wrapped_path})
+        os.vrunv(validator.program, {"-V", "-S", "frag", wrapped_path, "-o", output_path})
+    end
 
-function eui_compile_shadertoy_config(target, config, asset_root, output_root)
-    local wrapper = target:dep("eui_shadertoy_wrap")
-    assert(wrapper, "missing eui_shadertoy_wrap dependency")
+    if target:name() == "gallery" then
+        compile("assets/shaders/shadertoy/demo.frag",
+            "assets/shaders/shadertoy/gallery_demo.frag.spv")
+        return
+    end
 
-    import("lib.detect.find_tool")
+    compile("assets/shaders/shadertoy/demo.frag",
+        "assets/shaders/shadertoy/demo.frag.spv")
+
     local python = find_tool("python3") or find_tool("python")
     assert(python, "Python 3 is required to generate Shadertoy SPIR-V from a config")
-    local validator = find_tool("glslangValidator", {paths = (function()
-        local paths = {}
-        local vulkan_sdk = os.getenv("VULKAN_SDK")
-        if vulkan_sdk then
-            table.insert(paths, path.join(vulkan_sdk, "Bin"))
-            table.insert(paths, path.join(vulkan_sdk, "bin"))
-        end
-        return paths
-    end)()})
-    assert(validator, "Vulkan SDK glslangValidator is required to generate Shadertoy SPIR-V")
-
-    local config_path = path.absolute(config, os.projectdir())
-    local asset_root_path = path.absolute(asset_root, os.projectdir())
-    local output_root_path = path.absolute(output_root, target:targetdir())
-    local stamp = path.join(target:autogendir(), "shadertoy",
-        path.basename(path.directory(config)) .. ".config.stamp")
-    os.mkdir(path.directory(stamp))
-    os.vrunv(python.program, {
-        path.join(os.projectdir(), "scripts", "generate_shadertoy_spirv.py"),
-        "--config", config_path,
-        "--asset-root", asset_root_path,
-        "--output-root", output_root_path,
-        "--wrapper", wrapper:targetfile(),
-        "--validator", validator.program,
-        "--stamp", stamp
-    })
+    for _, config in ipairs(os.files("assets/shaders/shadertoy/*/config.json")) do
+        local stamp = path.join(target:autogendir(), "shadertoy",
+            path.basename(path.directory(config)) .. ".config.stamp")
+        os.mkdir(path.directory(stamp))
+        os.vrunv(python.program, {
+            path.join(os.projectdir(), "scripts", "generate_shadertoy_spirv.py"),
+            "--config", path.absolute(config, os.projectdir()),
+            "--asset-root", path.absolute("assets/shaders/shadertoy", os.projectdir()),
+            "--output-root", path.absolute("assets/shaders/shadertoy", target:targetdir()),
+            "--wrapper", wrapper:targetfile(),
+            "--validator", validator.program,
+            "--stamp", stamp
+        })
+    end
 end
 
 -- =============================================================================
@@ -480,18 +492,7 @@ if build_apps then
                 )
                 if render_backend == "vulkan" then
                     add_deps("eui_shadertoy_wrap")
-                    after_build(function(target)
-                        eui_compile_shadertoy(target,
-                            "assets/shaders/shadertoy/demo.frag",
-                            "assets/shaders/shadertoy/demo.frag.spv")
-                        for _, config in ipairs(os.files(
-                            "assets/shaders/shadertoy/*/config.json")) do
-                            eui_compile_shadertoy_config(target,
-                                config,
-                                "assets/shaders/shadertoy",
-                                "assets/shaders/shadertoy")
-                        end
-                    end)
+                    after_build(eui_build_shadertoy_assets)
                 end
             end
             if name == "gallery" then
@@ -502,17 +503,21 @@ if build_apps then
                 )
                 if render_backend == "vulkan" then
                     add_deps("eui_shadertoy_wrap")
-                    after_build(function(target)
-                        eui_compile_shadertoy(target,
-                            "assets/shaders/shadertoy/demo.frag",
-                            "assets/shaders/shadertoy/gallery_demo.frag.spv")
-                    end)
+                    after_build(eui_build_shadertoy_assets)
                 end
             end
         target_end()
         ::continue::
     end
 end
+
+function eui_copy_user_app_assets(target)
+    local app_assets = target:values("eui_app_assets")
+    if app_assets and os.exists(app_assets) then
+        os.cp(app_assets, path.join(target:targetdir(), "assets"))
+    end
+end
+
 -- =============================================================================
 -- User applications (apps/*.cpp and apps/<name>/app.cpp)
 -- =============================================================================
@@ -539,12 +544,8 @@ if build_user then
                 add_files(path.join(dir, "**.cpp"))
                 add_rules("eui.app")
                 add_includedirs("include", ".", dir)
-                after_build(function(target)
-                    local app_assets = path.join(os.projectdir(), dir, "assets")
-                    if os.exists(app_assets) then
-                        os.cp(app_assets, path.join(target:targetdir(), "assets"))
-                    end
-                end)
+                set_values("eui_app_assets", path.absolute(path.join(dir, "assets"), os.projectdir()))
+                after_build(eui_copy_user_app_assets)
             target_end()
         end
     end

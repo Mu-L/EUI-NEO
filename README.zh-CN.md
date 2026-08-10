@@ -119,9 +119,17 @@ target("my_app")
     add_packages("eui-neo")
 ```
 
-直接构建仓库时运行 `xmake f -m release -y` 和 `xmake`。需要 SDL2、Vulkan
-或共享库时分别加入 `--window_backend=sdl2`、`--render_backend=vulkan` 或
-`--shared=y`。源码树应用使用 `eui.app` 规则处理平台入口和运行资源。
+直接构建仓库示例：
+
+```powershell
+xmake f -m debug -y --apps=y --user_apps=y
+xmake build gallery
+xmake f -m release -y --apps=y --user_apps=y
+xmake build gallery
+```
+
+Windows 产物在 `.xmake/build/windows/x64/<debug|release>/gallery.exe`。
+SDL2、Vulkan 和共享库选项见 [集成指南](docs/集成指南.md)。
 
 ## 可选模块
 

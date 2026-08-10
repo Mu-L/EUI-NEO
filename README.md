@@ -123,8 +123,17 @@ The xrepo package provides the `eui_neo` library; `main.cpp` owns the window
 loop and application entry point. When building this repository directly,
 the `eui.app` rule adds the selected platform entry point and deploys assets.
 
-For a repository build, use `xmake f -m release -y && xmake`. Select
-`--window_backend=sdl2`, `--render_backend=vulkan`, or `--shared=y` when needed.
+Build a repository example:
+
+```powershell
+xmake f -m debug -y --apps=y --user_apps=y
+xmake build gallery
+xmake f -m release -y --apps=y --user_apps=y
+xmake build gallery
+```
+
+On Windows, the executable is `.xmake/build/windows/x64/<debug|release>/gallery.exe`.
+See the [Integration Guide](docs/集成指南.md) for backend options and other targets.
 
 ## Optional Modules
 
