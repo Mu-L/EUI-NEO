@@ -182,5 +182,5 @@ EUI-NEO's original source code is licensed under the Apache License 2.0. Third-p
 Thank you to everyone who has contributed code, improved the documentation, reported issues, or shared feedback with EUI-NEO.
 
 <a href="https://github.com/sudoevolve/EUI-NEO/graphs/contributors">
-  <img alt="EUI-NEO contributors" src="https://contrib.rocks/image?repo=sudoevolve/EUI-NEO">
+  <img alt="EUI-NEO contributors" src="https://contrib.rocks/image?repo=sudoevolve/eui-neo&max=100&columns=10">
 </a>
