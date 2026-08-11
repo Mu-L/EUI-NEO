@@ -2,10 +2,30 @@
 #include "core/platform/native_bridge.h"
 
 #include <algorithm>
-
+#include <cmath>
+#include <cstdlib>
 #if defined(EUI_WINDOW_BACKEND_SDL2)
 
 #include <SDL.h>
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <SDL_syswm.h>
+#include <X11/Xresource.h>
+#endif
+#ifdef None
+#undef None
+#endif
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
+#ifdef CursorShape
+#undef CursorShape
+#endif
+#ifdef Success
+#undef Success
+#endif
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -198,8 +218,120 @@ void uninstallSdlImeFilter(SDL_Window* window) {
 }
 
 #endif
+#if defined(__linux__) && !defined(__ANDROID__)
+struct X11ResourceApi {
+    using Initialize = void (*)();
+    using ResourceManagerString = char* (*)(Display*);
+    using GetStringDatabase = XrmDatabase (*)(const char*);
+    using GetResource = int (*)(XrmDatabase, const char*, const char*, char**, XrmValue*);
+    using DestroyDatabase = void (*)(XrmDatabase);
+
+    void* library = nullptr;
+    Initialize initialize = nullptr;
+    ResourceManagerString resourceManagerString = nullptr;
+    GetStringDatabase getStringDatabase = nullptr;
+    GetResource getResource = nullptr;
+    DestroyDatabase destroyDatabase = nullptr;
+
+    bool available() const {
+        return library != nullptr && initialize != nullptr &&
+               resourceManagerString != nullptr && getStringDatabase != nullptr &&
+               getResource != nullptr && destroyDatabase != nullptr;
+    }
+};
+
+X11ResourceApi loadX11ResourceApi() {
+    X11ResourceApi api;
+    void* library = SDL_LoadObject("libX11.so.6");
+    if (library == nullptr) {
+        library = SDL_LoadObject("libX11.so");
+    }
+    if (library == nullptr) {
+        return api;
+    }
+
+    api.library = library;
+    api.initialize = reinterpret_cast<X11ResourceApi::Initialize>(
+        SDL_LoadFunction(library, "XrmInitialize"));
+    api.resourceManagerString = reinterpret_cast<X11ResourceApi::ResourceManagerString>(
+        SDL_LoadFunction(library, "XResourceManagerString"));
+    api.getStringDatabase = reinterpret_cast<X11ResourceApi::GetStringDatabase>(
+        SDL_LoadFunction(library, "XrmGetStringDatabase"));
+    api.getResource = reinterpret_cast<X11ResourceApi::GetResource>(
+        SDL_LoadFunction(library, "XrmGetResource"));
+    api.destroyDatabase = reinterpret_cast<X11ResourceApi::DestroyDatabase>(
+        SDL_LoadFunction(library, "XrmDestroyDatabase"));
+    if (!api.available()) {
+        SDL_UnloadObject(library);
+        return {};
+    }
+    return api;
+}
+
+const X11ResourceApi& x11ResourceApi() {
+    static const X11ResourceApi api = loadX11ResourceApi();
+    return api;
+}
+#endif
+
 
 } // namespace
+
+
+float x11ContentScale(Handle window) {
+    SDL_Window* sdlWindow = static_cast<SDL_Window*>(window);
+    if (sdlWindow == nullptr) {
+        return 0.0f;
+    }
+#if defined(__linux__) && !defined(__ANDROID__)
+    SDL_SysWMinfo info{};
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo(sdlWindow, &info) != SDL_TRUE ||
+        info.subsystem != SDL_SYSWM_X11 ||
+        info.info.x11.display == nullptr) {
+        return 0.0f;
+    }
+
+    const X11ResourceApi& api = x11ResourceApi();
+    if (!api.available()) {
+        return 0.0f;
+    }
+
+    static Display* cachedDisplay = nullptr;
+    static float cachedScale = 1.0f;
+    if (cachedDisplay == info.info.x11.display) {
+        return cachedScale;
+    }
+    cachedDisplay = info.info.x11.display;
+    cachedScale = 1.0f;
+
+    api.initialize();
+    char* resources = api.resourceManagerString(info.info.x11.display);
+    if (resources == nullptr) {
+        return cachedScale;
+    }
+    XrmDatabase database = api.getStringDatabase(resources);
+    if (database == nullptr) {
+        return cachedScale;
+    }
+
+    char* type = nullptr;
+    XrmValue value{};
+    if (api.getResource(database, "Xft.dpi", "Xft.Dpi", &type, &value) &&
+        value.addr != nullptr) {
+        char* end = nullptr;
+        const float dpi = std::strtof(value.addr, &end);
+        if (end != value.addr && std::isfinite(dpi) && dpi > 0.0f) {
+            cachedScale = dpi / 96.0f;
+        }
+    }
+    api.destroyDatabase(database);
+    return cachedScale;
+#else
+    (void)sdlWindow;
+    return 0.0f;
+#endif
+}
 
 Handle createWindow(const WindowCreateRequest& request) {
     if (request.renderApi == RenderApi::OpenGL) {
@@ -222,6 +354,21 @@ Handle createWindow(const WindowCreateRequest& request) {
         request.width,
         request.height,
         flags);
+#if defined(__linux__) && !defined(__ANDROID__)
+    if (window != nullptr && request.highDpi) {
+        const float scale = x11ContentScale(window);
+        if (scale > 0.0f && scale != 1.0f) {
+            SDL_SetWindowSize(
+                window,
+                static_cast<int>(std::lround(static_cast<float>(request.width) * scale)),
+                static_cast<int>(std::lround(static_cast<float>(request.height) * scale)));
+            SDL_SetWindowPosition(
+                window,
+                SDL_WINDOWPOS_CENTERED,
+                SDL_WINDOWPOS_CENTERED);
+        }
+    }
+#endif
 #if defined(_WIN32)
     installSdlImeFilter(window);
 #endif

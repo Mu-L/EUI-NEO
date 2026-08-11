@@ -121,7 +121,12 @@ float dpiScale(SDL_Window* window) {
         }
     }
 #endif
-    return pointerScale(window);
+    const float drawableRatio = pointerScale(window);
+    if (drawableRatio > 1.0f) {
+        return drawableRatio;
+    }
+    const float x11Scale = core::window::x11ContentScale(window);
+    return x11Scale > 0.0f ? x11Scale : drawableRatio;
 }
 
 void attachNativeChildWindow(SDL_Window* parentWindow, SDL_Window* childWindow) {
@@ -483,6 +488,9 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool update
 int main() {
     core::platform::repairCurrentWorkingDirectory();
     SDL_SetMainReady();
+#if defined(__linux__) && !defined(__ANDROID__)
+    SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland,x11");
+#endif
 #ifdef _WIN32
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
     SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
