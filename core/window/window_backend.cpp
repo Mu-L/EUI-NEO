@@ -7,7 +7,7 @@
 #if defined(EUI_WINDOW_BACKEND_SDL2)
 
 #include <SDL.h>
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) && defined(SDL_VIDEO_DRIVER_X11)
 #include <SDL_syswm.h>
 #include <X11/Xresource.h>
 #endif
@@ -218,7 +218,7 @@ void uninstallSdlImeFilter(SDL_Window* window) {
 }
 
 #endif
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) && defined(SDL_VIDEO_DRIVER_X11)
 struct X11ResourceApi {
     using Initialize = void (*)();
     using ResourceManagerString = char* (*)(Display*);
@@ -283,7 +283,7 @@ float x11ContentScale(Handle window) {
     if (sdlWindow == nullptr) {
         return 0.0f;
     }
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) && defined(SDL_VIDEO_DRIVER_X11)
     SDL_SysWMinfo info{};
     SDL_VERSION(&info.version);
     if (SDL_GetWindowWMInfo(sdlWindow, &info) != SDL_TRUE ||
@@ -354,7 +354,7 @@ Handle createWindow(const WindowCreateRequest& request) {
         request.width,
         request.height,
         flags);
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) && defined(SDL_VIDEO_DRIVER_X11)
     if (window != nullptr && request.highDpi) {
         const float scale = x11ContentScale(window);
         if (scale > 0.0f && scale != 1.0f) {
