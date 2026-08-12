@@ -551,6 +551,16 @@ endif()
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
+        # SNI (StatusNotifierItem) backend: only glib/gio, present on every
+        # desktop Linux. Preferred over the GTK + libappindicator chain.
+        # gobject-2.0 is listed explicitly: gio-2.0.pc normally pulls it in
+        # via Requires, but naming it keeps the link line complete even with
+        # stripped-down or pkgconf-incompatible .pc files.
+        pkg_check_modules(EUI_GIO QUIET gio-2.0 gobject-2.0 glib-2.0)
+        # Legacy chain. libappindicator upstream is unmaintained and the
+        # Ayatana fork renamed the module, so this only fires on hosts that
+        # still ship the old build. Kept as a fallback; the SNI branch takes
+        # precedence in CMakeLists.txt.
         pkg_check_modules(EUI_APPINDICATOR QUIET appindicator3-0.1)
         pkg_check_modules(EUI_GTK3 QUIET gtk+-3.0)
     endif()
