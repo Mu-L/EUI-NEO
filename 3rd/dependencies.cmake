@@ -549,6 +549,12 @@ if(EUI_ENABLE_MARKDOWN)
 endif()
 
 if(UNIX AND NOT APPLE)
+    # eui_begin/end_quiet_third_party_config above replaces PKG_CONFIG_EXECUTABLE
+    # with a stub and then FORCE-restores the (usually empty) pre-stub value
+    # into the cache, which poisons find_program for the rest of the run.
+    # Platform tray detection below genuinely needs the real pkg-config, so
+    # drop the poisoned cache entry and let FindPkgConfig search again.
+    unset(PKG_CONFIG_EXECUTABLE CACHE)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         # SNI (StatusNotifierItem) backend: only glib/gio, present on every
