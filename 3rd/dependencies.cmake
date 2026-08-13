@@ -564,4 +564,15 @@ if(UNIX AND NOT APPLE)
         pkg_check_modules(EUI_APPINDICATOR QUIET appindicator3-0.1)
         pkg_check_modules(EUI_GTK3 QUIET gtk+-3.0)
     endif()
+    # Fail loudly instead of silently compiling the empty tray stub: a Linux
+    # build with EUI_TRAY_HAS_BACKEND=0 looks successful but has no tray.
+    if(EUI_ENABLE_TRAY AND NOT EUI_GIO_FOUND
+       AND NOT (EUI_APPINDICATOR_FOUND AND EUI_GTK3_FOUND))
+        message(FATAL_ERROR
+            "Linux tray support requires glib/gio (gio-2.0, preferred, SNI backend) "
+            "or GTK3 + libappindicator (legacy fallback), detected via pkg-config, "
+            "but none of them were found. Install your distribution's glib2 development "
+            "package (e.g. glib2-devel / libglib2.0-dev), or configure with "
+            "-DEUI_ENABLE_TRAY=OFF to build without tray support.")
+    endif()
 endif()
