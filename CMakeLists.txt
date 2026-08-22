@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(EUI-NEO VERSION 0.5.6)
+project(EUI-NEO VERSION 0.5.7)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -112,6 +112,7 @@ function(eui_apply_compile_options target_name)
     if(MSVC)
         target_compile_options(${target_name} PRIVATE
             /utf-8
+            /wd4530
             $<$<NOT:$<CONFIG:Debug>>:/O1>
             $<$<NOT:$<CONFIG:Debug>>:/GS->
             $<$<NOT:$<CONFIG:Debug>>:/sdl->

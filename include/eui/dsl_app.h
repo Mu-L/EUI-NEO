@@ -3,6 +3,7 @@
 #include "eui/app.h"
 #include "eui/async.h"
 
+#include <functional>
 #include <string>
 #include <utility>
 
@@ -27,6 +28,7 @@ struct DslAppConfig {
     bool trayEnabledValue = false;
     std::string trayTitleValue;
     std::string trayIconPathValue;
+    std::function<void(const eui::KeyEvent&)> keyEventHandler;
 
     DslAppConfig& title(std::string value) { titleValue = std::move(value); return *this; }
     DslAppConfig& pageId(std::string value) { pageIdValue = std::move(value); return *this; }
@@ -68,6 +70,10 @@ struct DslAppConfig {
         trayIconPathValue = std::move(value);
         return *this;
     }
+    DslAppConfig& onKeyEvent(std::function<void(const eui::KeyEvent&)> handler) {
+        keyEventHandler = std::move(handler);
+        return *this;
+    }
 };
 
 struct DslWindowConfig {
@@ -77,6 +83,7 @@ struct DslWindowConfig {
     int windowWidthValue = 640;
     int windowHeightValue = 420;
     bool modalValue = false;
+    std::function<void(const eui::KeyEvent&)> keyEventHandler;
 
     DslWindowConfig& title(std::string value) { titleValue = std::move(value); return *this; }
     DslWindowConfig& pageId(std::string value) { pageIdValue = std::move(value); return *this; }
@@ -90,6 +97,10 @@ struct DslWindowConfig {
     DslWindowConfig& windowWidth(int value) { windowWidthValue = value; return *this; }
     DslWindowConfig& windowHeight(int value) { windowHeightValue = value; return *this; }
     DslWindowConfig& modal(bool value = true) { modalValue = value; return *this; }
+    DslWindowConfig& onKeyEvent(std::function<void(const eui::KeyEvent&)> handler) {
+        keyEventHandler = std::move(handler);
+        return *this;
+    }
 };
 
 const DslAppConfig& dslAppConfig();

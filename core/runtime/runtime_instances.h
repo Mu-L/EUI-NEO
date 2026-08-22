@@ -125,6 +125,10 @@ struct ShaderToyInstance {
 
 struct InteractionInstance {
     InteractionState state;
+    bool contextActive = false;
+    bool contextDragged = false;
+    double contextStartX = 0.0;
+    double contextStartY = 0.0;
     bool seen = false;
 };
 
@@ -193,7 +197,11 @@ struct RetainedLayerInstance {
     std::uint64_t signature = 0;
     int width = 0;
     int height = 0;
-    int stableFrames = 0;
+    Rect pendingBounds;
+    std::uint64_t pendingSignature = 0;
+    int pendingWidth = 0;
+    int pendingHeight = 0;
+    int pendingStableFrames = 0;
     bool valid = false;
     bool seen = false;
 };

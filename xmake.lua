@@ -9,7 +9,7 @@
 --   xmake f --shared=y
 
 set_project("EUI-NEO")
-set_version("0.5.6")
+set_version("0.5.7")
 set_xmakever("2.9.0")
 set_languages("c11", "cxx17")
 set_config("builddir", ".xmake/build")
@@ -76,6 +76,7 @@ function eui_apply_compile_options(target)
     end
     if target:is_plat("windows") and not target:is_plat("mingw") then
         target:add("cxflags", "/utf-8")
+        target:add("cxflags", "/wd4530")
         if not is_mode("debug") then
             target:add("cxflags", "/O1", "/GS-", "/sdl-", "/wd4819")
         end
