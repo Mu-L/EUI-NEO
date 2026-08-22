@@ -143,6 +143,7 @@ void openWindow(const DslWindowConfig& config, DslWindowCompose composeFn) {
     request.width = std::max(160, config.windowWidthValue);
     request.height = std::max(120, config.windowHeightValue);
     request.modal = config.modalValue;
+    request.onKeyEvent = config.keyEventHandler;
     request.compose = std::move(composeFn);
     detail::dslWindowRequests().push_back(std::move(request));
     requestUpdate();
@@ -217,6 +218,7 @@ void requestFullPaint() {
 bool initialize(core::window::Handle window) {
     const DslAppConfig& config = dslAppConfig();
     core::TextPrimitive::setDefaultFontFiles(config.textFontFileValue, config.iconFontFileValue);
+    detail::dslRuntime().setKeyEventHandler(config.keyEventHandler);
 
     detail::DslAppState& state = detail::dslAppState();
     if (!state.iconApplied) {
