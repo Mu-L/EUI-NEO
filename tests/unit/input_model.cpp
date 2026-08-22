@@ -12,8 +12,15 @@ int main() {
     const core::KeyEvent left{
         core::InputKey::Left, core::KeyAction::Repeat, {false, true}
     };
+    core::KeyModifiers shortcutModifiers;
+    shortcutModifiers.shift = true;
+#if defined(__APPLE__)
+    shortcutModifiers.super = true;
+#else
+    shortcutModifiers.control = true;
+#endif
     const core::KeyEvent shiftedShortcut{
-        core::InputKey::Z, core::KeyAction::Press, {true, true}
+        core::InputKey::Z, core::KeyAction::Press, shortcutModifiers
     };
     const core::KeyEvent shiftRelease{
         core::InputKey::LeftShift, core::KeyAction::Release, {}
